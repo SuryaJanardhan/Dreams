@@ -71,6 +71,50 @@ node src/main_automation.js
 
 Many checks require credentials, local assets, Python dependencies, model checkpoints, the reel composer dev server, or external APIs. If a verification command cannot run locally, record the exact blocker in the module Markdown file.
 
+## Per-Module Documentation Template
+
+After each module refactor, add or update the matching root Markdown file. Use this shape so the next module refactor can continue from a clear handoff:
+
+```md
+# [Module Name] Module
+
+## Purpose
+
+What this module owns.
+
+## Public Interface
+
+The functions or classes other code should call.
+
+## Files Changed
+
+- `src/...`
+
+## Legacy Cleanup
+
+What legacy style, duplication, mixed responsibility, or unclear logic was improved.
+
+## Behavior Preserved
+
+What should still work the same as before.
+
+## Dependencies
+
+Environment variables, services, assets, generated files, and external APIs.
+
+## Verification
+
+Commands run and results.
+
+## Risks
+
+Known weak spots or behavior that still needs testing.
+
+## Notes For Next Refactor
+
+What the next module refactor should know.
+```
+
 ## Module 1: Script
 
 ### Current Files
@@ -530,7 +574,7 @@ Return structured task data:
 ```bash
 git diff --check
 node bin/test_posts_empty.js
-node test/test_supabase.js
+node bin/test_resilient_workflow.js
 ```
 
 Use a Sheets-specific smoke test if credentials are available.
