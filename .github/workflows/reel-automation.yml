@@ -1,124 +1,78 @@
-name: Reels Automation Pipeline
-
+name: Dreams Automated Reels
 on:
   schedule:
-    # Runs at 6:00 AM UTC (11:30 AM IST) uncomment below to run automatically
-    # Add more cron jobs as per your need
-    - cron: "0 6 * * *"
+    # 11:30 AM / 11:30 PM IST. GitHub schedules may be delayed.
+    - cron: "0 6,18 * * *"
   workflow_dispatch:
-
+permissions:
+  contents: read
+concurrency:
+  group: dreams-production
+  cancel-in-progress: false
 jobs:
   automation:
     runs-on: ubuntu-latest
-    timeout-minutes: 340
-
+    timeout-minutes: 120
+    env:
+      AUTOMATION_BUDGET_MINUTES: "120"
+      GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+      GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_API_KEY_FOR_VISUALS: ${{ secrets.GEMINI_API_KEY_FOR_VISUALS }}
+      ASSEMBLYAI_API_KEY: ${{ secrets.ASSEMBLYAI_API_KEY }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      SUPABASE_BUCKET: ${{ secrets.SUPABASE_BUCKET || 'videos' }}
+      EMAIL_USER: ${{ secrets.EMAIL_USER }}
+      EMAIL_APP_PASSWORD: ${{ secrets.EMAIL_APP_PASSWORD }}
+      NOTIFICATION_EMAIL: ${{ secrets.NOTIFICATION_EMAIL }}
+      GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+      GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+      YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+      INSTAGRAM_ACCOUNT_ID: ${{ secrets.INSTAGRAM_ACCOUNT_ID }}
+      INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
+      FACEBOOK_PAGE_ID: ${{ secrets.FACEBOOK_PAGE_ID }}
+      FACEBOOK_ACCESS_TOKEN: ${{ secrets.FACEBOOK_ACCESS_TOKEN }}
+      VOICEBOX_REFERENCE_TEXT: ${{ secrets.VOICEBOX_REFERENCE_TEXT }}
+      VOICEBOX_MODEL_SIZE: "1.7B"
+      COVER_INTRO_DURATION_SEC: "0.5"
+      PYTHON_EXECUTABLE: python
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Install gdown
-        run: pip install gdown
-
-      - name: Download Models and Base Video
-        run: |
-          mkdir -p wav2lip/checkpoints
-          mkdir -p wav2lip/face_detection/detection/sfd
-          mkdir -p assets
-
-          # Download using gdown to assets folder
-          gdown 1mF-3k82JnizTvP9R2PWLPsGfOEBa82pr -O wav2lip/checkpoints/wav2lip_gan.pth
-          gdown 1hxwNL1lzclbRnyugv1q8rmk6JlqumOoh -O wav2lip/face_detection/detection/sfd/s3fd.pth
-          # Conditional Download: Only download if not in assets OR if it is a small stub (< 1MB)
-          FILE_SIZE=0
-          if [ -f assets/Base-vedio.mp4 ]; then
-            FILE_SIZE=$(stat -c%s assets/Base-vedio.mp4)
-          fi
-
-          if [ ! -f assets/Base-vedio.mp4 ] || [ "$FILE_SIZE" -lt 1000000 ]; then
-            echo "🎬 Base video missing or stub detected (Size: $FILE_SIZE bytes), downloading..."
-            gdown ${{ secrets.BASE_VIDEO_DRIVE_ID || '1a61Tl2yvmlWAHKmRZmzh3gwFNXqnBhYL' }} -O assets/Base-vedio.mp4
-          else
-            echo "✅ Base video exists and seems valid (Size: $FILE_SIZE bytes), skipping download."
-          fi
-
-          wget https://github.com/TencentARC/GFPGAN/releases/download/v1.3.0/GFPGANv1.4.pth -P wav2lip/checkpoints/
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Record total job budget start
+        run: echo "AUTOMATION_STARTED_AT_MS=$(date +%s%3N)" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: "npm"
-
-      - name: Install Dependencies
-        run: |
-          npm install
-          cd reel-composer && npm install
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
+          node-version: "22"
+          cache: npm
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.10"
-          cache: "pip"
-
-      - name: Install System Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg libgl1 libglib2.0-0 libsm6 libxext6 libxrender1 xvfb
-
-      - name: Install Python Dependencies
-        run: |
-          pip install -r wav2lip/requirements.txt
-          pip install -r voicebox/requirements.txt
-
-      - name: Install Playwright Browsers
+          cache: pip
+          cache-dependency-path: voicebox/requirements-automation.txt
+      - name: System media tools
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Install and check TypeScript modules
+        run: npm ci && npm run typecheck
+      - name: Browser renderer
         run: npx playwright install chromium --with-deps
-
-      - name: Validate Required Cover Asset
+      - name: CPU voice engine
         run: |
-          if [ ! -f assets/cover.png ]; then
-            echo "❌ Missing required file: assets/cover.png"
-            exit 1
-          fi
-          echo "✅ Found assets/cover.png"
-
-      - name: Run Reels Automation Pipeline
-        run: |
-          cd reel-composer && npm run dev -- --port 3000 &
-          npx wait-on http://localhost:3000 --timeout 60000
-          xvfb-run --auto-servernum --server-args="-screen 0 1280x1024x24" node src/main_automation.js
-        env:
-          PORT: 3000
-          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
-          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GEMINI_API_KEY_FOR_VISUALS: ${{ secrets.GEMINI_API_KEY_FOR_VISUALS }}
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          ASSEMBLYAI_API_KEY: ${{ secrets.ASSEMBLYAI_API_KEY }}
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          SUPABASE_BUCKET: ${{ secrets.SUPABASE_BUCKET || 'videos' }}
-          EMAIL_USER: ${{ secrets.EMAIL_USER }}
-          EMAIL_APP_PASSWORD: ${{ secrets.EMAIL_APP_PASSWORD }}
-          NOTIFICATION_EMAIL: ${{ secrets.NOTIFICATION_EMAIL }}
-          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
-          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
-          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
-          INSTAGRAM_ACCOUNT_ID: ${{ secrets.INSTAGRAM_ACCOUNT_ID }}
-          INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
-          INSTAGRAM_REEL_THUMB_OFFSET_MS: "250"
-          FACEBOOK_PAGE_ID: ${{ secrets.FACEBOOK_PAGE_ID }}
-          FACEBOOK_ACCESS_TOKEN: ${{ secrets.FACEBOOK_ACCESS_TOKEN }}
-          COVER_INTRO_DURATION_SEC: "0.5"
-          USE_PREMIUM_WAV2LIP: ${{ secrets.USE_PREMIUM_WAV2LIP }}
-          FORCE_CPU: "true"
-
-      - name: Upload Artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
+          pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+          pip install -r voicebox/requirements-automation.txt
+      - name: Cache model downloads only
+        uses: actions/cache@v4
         with:
-          name: automation-artifacts
-          path: |
-            *.mp4
-            *.srt
-            *.log
-            error_screenshot_*.png
+          path: ~/.cache/huggingface
+          key: qwen-cpu-${{ runner.os }}-${{ hashFiles('voicebox/requirements-automation.txt') }}-1.7B
+      - name: Run one automated task
+        id: production
+        run: npm run automation
+      - name: Report setup failure before production
+        if: failure() && steps.production.outcome == 'skipped'
+        run: node --import tsx src/automation/setup-failure.ts
+      - name: In-job last-resort temporary cleanup
+        if: always()
+        run: |
+          # Only this run's isolated generated workspaces. No source assets or model caches.
+          node -e "require('node:fs').rmSync('.automation-runs', {recursive:true,force:true})"

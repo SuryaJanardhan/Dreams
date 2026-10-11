@@ -2,23 +2,42 @@
   "name": "ai-content-automation",
   "version": "1.0.0",
   "description": "Automation for AI video content",
-  "main": "test_full_automation.js",
+  "main": "dist/src/automation/main.js",
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
     "@supabase/supabase-js": "^2.93.2",
     "axios": "^1.6.7",
     "dotenv": "^16.4.5",
+    "esbuild": "^0.28.2",
     "ffmpeg-static": "^5.2.0",
     "fluent-ffmpeg": "^2.1.2",
     "googleapis": "^170.1.0",
     "groq-sdk": "^0.3.3",
-    "nodemailer": "^7.0.13",
+    "gsap": "^3.15.0",
+    "nodemailer": "^10.1.0",
+    "sharp": "^0.35.5",
     "supabase": "^2.72.8",
     "wait-on": "^9.0.3",
-    "winston": "^3.11.0"
+    "winston": "^3.11.0",
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@playwright/test": "^1.41.2",
-    "playwright": "^1.41.2"
+    "@types/gsap": "^3.0.0",
+    "@types/node": "^22.20.5",
+    "@types/nodemailer": "^7.0.12",
+    "playwright": "^1.41.2",
+    "prettier": "^3.9.10",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "automation": "node --import tsx src/automation/main.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc",
+    "test": "node --import tsx --test --test-concurrency=1 tests/*.test.ts"
   }
 }

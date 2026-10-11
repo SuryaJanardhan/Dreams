@@ -1,3 +1,20 @@
+# Dreams automated reels
+
+The active production entry point is `src/automation/main.ts`, launched by `npm run automation` on GitHub Actions. The new path uses strict TypeScript for Sheets, content, captions, frame rendering, publishing, and operations; a minimal Python engine synthesizes the cloned voice on CPU.
+
+One eligible Sheet row becomes a narrated technical explainer, with custom generated animation, highlighted captions, background music, and a cover. The same 1080×1920, 60 fps video is submitted to YouTube, Instagram, and Facebook. A job is Completed only when all three providers confirm publication and return canonical links.
+
+Start with [implementation and operation notes](docs/IMPLEMENTATION.md), [project map](docs/PROJECT_MAP.md), and [agreed decisions](docs/DECISIONS.md). Configure Actions secrets from `.env.example`. The twice-daily schedule is 06:00 and 18:00 UTC; scheduled execution may be delayed by GitHub.
+
+Failures preserve progress and successful links, set the Sheet's AutomationControl PAUSED flag, clean generated work where safe, and email outcomes. No automatic repost or provider fallback occurs. Clear PAUSED after investigating; terminal rows are not automatically requeued.
+
+Use Node 22 or newer. Offline verification: `npm ci`, `npm run typecheck`, `npm test`, and `npm run build`. Renderer tests also need FFmpeg and Playwright Chromium (`npx playwright install chromium`). CI installs these tools. Tests do not publish to live providers.
+
+The previous JavaScript pipeline, composer editor, and presenter code remain in the repository during migration, including existing uncommitted user work. They are not the active Actions production path. Live provider integration and a complete 60-second CPU runtime benchmark remain unverified. Actions allowance and provider quotas depend on the account; zero cost is not guaranteed by this implementation.
+
+<details>
+<summary>Historical setup notes — legacy pipeline</summary>
+
 # 🎬 Dreams AI Video Maker (GitHub Actions Edition)
 
 **Dreams AI** is an end-to-end automated pipeline that transforms Google Sheet ideas into high-fidelity AI videos—running entirely on GitHub Actions for $0 cost.
@@ -6,7 +23,7 @@
 **Estimated Run Time for full Automation**
 **Note**: This is an estimated run time and may vary depending on the speed of the GitHub Actions runner and the size of the video. Normal Lip-Sync takes only 20-25 minutes but the repo workflow has advanced GAN to increase the final vedio output quality which takes more time on CPU.
 
-**CPU**: 
+**CPU**:
 - **Script Generation**: 3 minutes
 - **Voice Cloning**: 7 minutes
 - **Lip-Sync**: 4 hours( Advanced GAN)
@@ -14,7 +31,7 @@
 - **Upload**: 10 minutes
 - **Total**: 4 hours 40 minutes
 
-**GPU**: 
+**GPU**:
 - **Script Generation**: 3 minutes
 - **Voice Cloning**: 7 minutes
 - **Lip-Sync**: 20 minutes
@@ -132,7 +149,7 @@ Follow these steps to run the pipeline on your local machine:
 4.  **Run Reel-composer**:
     ```bash
     cd reel-composer
-    npm install 
+    npm install
     npm run dev
     ```
 5.  **Voicebox Setup**:
@@ -207,7 +224,7 @@ For a deep dive into setting up GitHub Actions infrastructure and secrets, see *
 -  Refactor script, captions, descriptions prompts to AI as per your need.
 -  Refactor the visual prompt to AI as per your need.
 -  Refactor sheet service as per your sheet layout.
--  Modify the email service as per your need. 
+-  Modify the email service as per your need.
 -  Update with new social services if u want to add a new platform.
 -  Utilize strong models if you have access to them (e.g. Gemini 3 Pro, GPT-5, etc.).
 
@@ -222,3 +239,5 @@ For a deep dive into setting up GitHub Actions infrastructure and secrets, see *
 ## License
 
 -  This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+</details>
