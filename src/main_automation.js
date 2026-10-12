@@ -11,8 +11,7 @@ const {
   generateScriptForTask,
   generateVisualPromptForTask,
 } = require("./services/scriptService");
-const { generateSRT } = require("./services/newFeaturesService");
-const { createSubtitlesFromAudio } = require("./utils/subtitles");
+const { createSubtitleTrack } = require("./utils/subtitles");
 const {
   uploadToYouTube,
   uploadToInstagramWithUrl,
@@ -104,10 +103,8 @@ async function main() {
     currentStep = "SRT Generation (AssemblyAI)";
     logger.info("📜 Step 4: Generating Subtitles (SRT) via AssemblyAI...");
     const step4Start = Date.now();
-    const srtRes = await createSubtitlesFromAudio(audioPath);
-    const srtPath = srtRes.subtitlesPath;
-    // Also save as subtitles.srt in root for consistency if needed by other steps
-    fs.copyFileSync(srtPath, path.resolve("subtitles.srt"));
+    const subtitleTrack = await createSubtitleTrack({ audioPath });
+    const srtPath = subtitleTrack.subtitlesPath;
     logger.info(
       `✅ Step 4 Complete: SRT generated in ${((Date.now() - step4Start) / 1000).toFixed(2)}s`,
     );
