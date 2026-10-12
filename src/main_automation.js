@@ -8,14 +8,6 @@ const {
 } = require("./services/scriptService");
 const { createSubtitleTrack } = require("./utils/subtitles");
 const {
-  uploadToYouTube,
-  uploadToInstagramWithUrl,
-  uploadToFacebookWithUrl,
-  uploadToSupabaseAndGetLink,
-  deleteFromSupabase,
-  generateUnifiedSocialMediaCaption,
-} = require("./services/socialMediaService");
-const {
   sendErrorNotification,
   sendSuccessNotification,
 } = require("./services/emailService");
@@ -30,6 +22,11 @@ const {
   applyCoverIntro,
   composeFinalReel,
 } = require("./services/compositionService");
+const {
+  cleanupPublishingStaging,
+  generatePublishingCaption,
+  publishReel,
+} = require("./services/publishingService");
 
 async function main() {
   logger.info("🚀 STARTING REELS AUTOMATION PIPELINE");
@@ -163,7 +160,7 @@ async function main() {
     currentStep = "Generating Captions";
     logger.info("✍️ Step 7: Creating social media captions...");
     const step7Start = Date.now();
-    const social = await generateUnifiedSocialMediaCaption(TOPIC);
+    const social = await generatePublishingCaption({ topic: TOPIC });
     logger.info(
       `✅ Step 7 Complete: Captions ready in ${((Date.now() - step7Start) / 1000).toFixed(2)}s`,
     );
@@ -172,68 +169,14 @@ async function main() {
     currentStep = "Uploading to Social Media";
     logger.info("📤 Step 8: Starting Social Media Uploads...");
     const step8Start = Date.now();
-    const links = { yt: "", insta: "", fb: "" };
-
-    // 1. Supabase Upload (One-time) for Meta Platforms
-    try {
-      logger.info("☁️ Uploading to Supabase (Staging for Meta)...");
-      supabaseInfo = await uploadToSupabaseAndGetLink(videoForPosting, TOPIC);
-    } catch (e) {
-      logger.error(`❌ Supabase Upload Error: ${e.message}`);
-    }
-
-    // A. YouTube Upload (Direct - Independent of Staging)
-    const ytPromise = uploadToYouTube(videoForPosting, TOPIC, social.caption)
-      .then((res) => {
-        if (res.success) {
-          links.yt = res.url;
-          logger.info(`✅ YT Posted: ${res.url}`);
-        }
-      })
-      .catch((e) => logger.error(`❌ YT Error: ${e.message}`));
-
-    const metaPromises = [];
-
-    if (supabaseInfo && supabaseInfo.success) {
-      const publicUrl = supabaseInfo.publicLink;
-      logger.info(`✅ Supabase Link (Staging for Meta): ${publicUrl}`);
-
-      // B. Instagram Upload (via URL)
-      metaPromises.push(
-        uploadToInstagramWithUrl(publicUrl, TOPIC, social.caption)
-          .then((res) => {
-            if (res.success) {
-              links.insta = res.url;
-              logger.info(`✅ Insta Posted: ${res.url}`);
-            }
-          })
-          .catch((e) => logger.error(`❌ Insta Error: ${e.message}`)),
-      );
-
-      // C. Facebook Upload (via URL)
-      metaPromises.push(
-        uploadToFacebookWithUrl(publicUrl, TOPIC, social.caption)
-          .then((res) => {
-            if (res.success) {
-              links.fb = res.url;
-              logger.info(`✅ FB Posted: ${res.url}`);
-            }
-          })
-          .catch((e) => logger.error(`❌ FB Error: ${e.message}`)),
-      );
-    } else {
-      logger.warn(
-        "⚠️ Meta (Instagram/Facebook) upload skipped because Supabase staging failed.",
-      );
-    }
-
-    let successCount = 0;
-    await Promise.allSettled([ytPromise, ...metaPromises]);
-
-    // Count successes
-    if (links.yt) successCount++;
-    if (links.insta) successCount++;
-    if (links.fb) successCount++;
+    const publishResult = await publishReel({
+      videoPath: videoForPosting,
+      topic: TOPIC,
+      caption: social.caption,
+    });
+    const links = publishResult.links;
+    const successCount = publishResult.successCount;
+    supabaseInfo = publishResult.staging;
 
     logger.info(
       `✅ Step 8 Complete: ${successCount}/3 uploads finished in ${((Date.now() - step8Start) / 1000).toFixed(2)}s`,
@@ -268,10 +211,7 @@ async function main() {
     }
 
     // CRITICAL CLEANUP: Delete from Supabase staging
-    if (supabaseInfo && supabaseInfo.success && supabaseInfo.fileName) {
-      logger.info("🧹 Cleaning up Supabase temporary storage...");
-      // await deleteFromSupabase(supabaseInfo.fileName, supabaseInfo.bucket || "videos").catch(e => logger.error("Supabase Cleanup Error:", e.message));
-    }
+    await cleanupPublishingStaging(publishResult);
 
     const totalTime = ((Date.now() - sessionStart) / 1000).toFixed(2);
     logger.info(`✨ AUTOMATION SUCCESSFUL | Total Time: ${totalTime}s`);
@@ -282,8 +222,7 @@ async function main() {
 
     // Cleanup on failure as well, if we managed to upload anything
     if (supabaseInfo && supabaseInfo.success && supabaseInfo.fileName) {
-      logger.info("🧹 Cleanup on failure: Removing Supabase temporary file...");
-      // await deleteFromSupabase(supabaseInfo.fileName, supabaseInfo.bucket || "videos").catch(e => logger.error("Supabase Cleanup Error on Failure:", e.message));
+      await cleanupPublishingStaging({ staging: supabaseInfo });
     }
 
     if (task && task.rowId > 0) {
