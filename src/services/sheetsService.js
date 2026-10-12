@@ -266,7 +266,44 @@ const getColumnLetter = (columnNumber) => {
   return result;
 };
 
+const claimNextTask = async () => {
+  return getNextTask();
+};
+
+const markTaskProcessing = async (task) => {
+  if (task?.rowId > 0) {
+    logger.info(`🔒 Locking Row ${task.rowId} as "Processing"...`);
+    await updateSheetStatus(task.rowId, "Processing");
+  }
+};
+
+const markTaskPosted = async (task, links) => {
+  if (task?.rowId > 0) {
+    logger.info("📊 Updating Google Sheets with results...");
+    await updateSheetStatus(
+      task.rowId,
+      "Posted",
+      links.yt,
+      links.insta,
+      links.fb,
+    );
+  }
+};
+
+const markTaskFailed = async (task, error) => {
+  if (task?.rowId > 0) {
+    await updateSheetStatus(
+      task.rowId,
+      "Error: " + error.message.slice(0, 50),
+    );
+  }
+};
+
 module.exports = {
+  claimNextTask,
   getNextTask,
+  markTaskFailed,
+  markTaskPosted,
+  markTaskProcessing,
   updateSheetStatus,
 };
