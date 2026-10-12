@@ -28,7 +28,10 @@ const {
 const Groq = require("groq-sdk");
 const logger = require("./config/logger");
 const { syncLip } = require("./services/wav2lipService");
-const voiceboxService = require("./services/voiceboxService");
+const {
+  generateNarrationAudio,
+  prepareAudioForComposition,
+} = require("./services/audioService");
 
 async function main() {
   logger.info("🚀 STARTING REELS AUTOMATION PIPELINE");
@@ -70,51 +73,8 @@ async function main() {
     currentStep = "Audio Generation (Voicebox)";
     logger.info("🎤 Step 2: Generating Cloned Audio via Voicebox...");
     const step2Start = Date.now();
-    let audioPath;
-
-    // Configuration for Cloned Voice
-    const REF_AUDIO = path.resolve(__dirname, "../assets/Base-audio.mp3");
-    const GEN_AUDIO = path.join(
-      __dirname,
-      "../audio",
-      `cloned_voice_${Date.now()}.wav`,
-    );
-
-    if (!fs.existsSync(path.dirname(GEN_AUDIO))) {
-      fs.mkdirSync(path.dirname(GEN_AUDIO), { recursive: true });
-    }
-
-    if (!fs.existsSync(REF_AUDIO)) {
-      throw new Error(
-        `CRITICAL: Base-audio.mp3 not found in assets. Voicebox requires this reference file.`,
-      );
-    }
-
-    // Single-pass synthesis with professional technical educator instructions
-    const VOICE_INSTRUCT =
-      "Steady, authoritative technical educational delivery. Professional and clear. Speak naturally with brief pauses at punctuation.";
-    const rawAudioPath = await voiceboxService.generateClonedVoice(
-      script,
-      REF_AUDIO,
-      GEN_AUDIO,
-      null,
-      VOICE_INSTRUCT,
-    );
-
-    // NEW: Implement 0.94 slowdown via FFmpeg
-    const slowedAudio = path.join(
-      path.dirname(GEN_AUDIO),
-      `slowed_${path.basename(GEN_AUDIO)}`,
-    );
-    console.log(`⏳ Applying 0.94x slowdown to audio...`);
-    await new Promise((res, rej) => {
-      ffmpeg(rawAudioPath)
-        .audioFilters("atempo=0.94")
-        .on("end", res)
-        .on("error", rej)
-        .save(slowedAudio);
-    });
-    audioPath = slowedAudio;
+    const audioResult = await generateNarrationAudio({ script });
+    const audioPath = prepareAudioForComposition(audioResult);
 
     /* GEMINI TTS FALLBACK (Commented out)
         if (fs.existsSync(CACHE_AUDIO)) {

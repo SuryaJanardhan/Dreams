@@ -29,14 +29,8 @@ class VoiceboxService {
         const absRefAudioPath = path.resolve(refAudioPath);
         const absOutputPath = path.resolve(outputPath);
 
-        // Build CLI command
-        let command = `python "${this.pythonScript}" --text "${text.replace(/"/g, '\\"')}" --audio "${absRefAudioPath}" --output "${absOutputPath}"`;
-        if (refText) {
-            command += ` --ref_text "${refText.replace(/"/g, '\\"')}"`;
-        }
-
         logger.info(`🗣️ Starting Voicebox Synthesis...`);
-        logger.debug(`Command: ${command}`);
+        logger.debug(`Voicebox output=${absOutputPath} reference=${absRefAudioPath}`);
 
         return new Promise((resolve, reject) => {
             const args = [
