@@ -8,8 +8,8 @@ require("dotenv").config();
 
 const { getNextTask, updateSheetStatus } = require("./services/sheetsService");
 const {
-  generateScript,
-  generateVisualPrompt,
+  generateScriptForTask,
+  generateVisualPromptForTask,
 } = require("./services/scriptService");
 const { generateSRT } = require("./services/newFeaturesService");
 const { createSubtitlesFromAudio } = require("./utils/subtitles");
@@ -60,7 +60,8 @@ async function main() {
     currentStep = "Script Generation";
     logger.info("📝 Step 1: Generating AI Script...");
     const step1Start = Date.now();
-    const script = await generateScript(TOPIC);
+    const scriptResult = await generateScriptForTask({ idea: TOPIC });
+    const script = scriptResult.script;
     logger.info(
       `✅ Step 1 Complete: Script generated in ${((Date.now() - step1Start) / 1000).toFixed(2)}s`,
     );
@@ -165,7 +166,11 @@ async function main() {
     logger.info("🎨 Step 5: Creating visual prompt via Gemini...");
     const step5Start = Date.now();
 
-    const visualPrompt = await generateVisualPrompt(TOPIC, script);
+    const visualPromptResult = await generateVisualPromptForTask(
+      { idea: TOPIC },
+      script,
+    );
+    const visualPrompt = visualPromptResult.visualPrompt;
 
     // Final guard: stop workflow if prompt is essentially empty
     if (!visualPrompt || visualPrompt.length < 10) {

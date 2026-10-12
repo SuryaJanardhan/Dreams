@@ -1,4 +1,4 @@
-const { generateScript } = require("../services/scriptService");
+const { generateScriptForTask } = require("../services/scriptService");
 const {
   generateAudioWithBatchingStrategy,
 } = require("../services/audioService");
@@ -33,7 +33,6 @@ const {
   cleanupRootDirectory,
   cleanupOnError,
 } = require("../services/cleanupService");
-const cleanLLMData = require("../utils/textCleaner");
 const logger = require("../config/logger");
 const fs = require("fs");
 const path = require("path");
@@ -242,8 +241,8 @@ const runCompleteWorkflow = async (taskData) => {
     // Step 1: Generate script
     logger.info("📝 Step 1: Generating script");
     currentWorkflow.currentStep = "script/generate";
-    const rawScript = await generateScript(taskData.idea, taskData.description);
-    const script = cleanLLMData.extractConversation(rawScript);
+    const scriptResult = await generateScriptForTask(taskData);
+    const script = scriptResult.script;
     currentWorkflow.results.script = script;
 
     // Save script to scripts folder
@@ -604,8 +603,11 @@ const runWorkflow = async (req, res) => {
 
     // Step 1: Generate script
     logger.info("→ Step 1: Generating script");
-    const rawScript = await generateScript(title, description);
-    const script = cleanLLMData.extractConversation(rawScript);
+    const scriptResult = await generateScriptForTask({
+      idea: title,
+      description,
+    });
+    const script = scriptResult.script;
 
     if (!script || script.length < 100) {
       throw new Error("Generated script is too short or empty");
