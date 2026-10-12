@@ -27,7 +27,7 @@ const {
 } = require("./services/emailService");
 const Groq = require("groq-sdk");
 const logger = require("./config/logger");
-const { syncLip } = require("./services/wav2lipService");
+const { createLipSyncedVideo } = require("./services/wav2lipService");
 const {
   generateNarrationAudio,
   prepareAudioForComposition,
@@ -94,17 +94,8 @@ async function main() {
     logger.info("👄 Step 3: Performing Wav2Lip Sync (Dynamic Talking Head)...");
     const step3Start = Date.now();
 
-    // Use Base-vedio.mp4 from assets as the source face for lip-syncing
-    const WAV2LIP_BASE = path.resolve(__dirname, "../assets/Base-vedio.mp4");
-    const INIT_MERGE = path.resolve(__dirname, "../merged_output.mp4");
-
-    if (!fs.existsSync(WAV2LIP_BASE)) {
-      logger.error(`❌ Base-vedio.mp4 not found in root: ${WAV2LIP_BASE}`);
-      throw new Error(`Missing base video for Wav2Lip at ${WAV2LIP_BASE}`);
-    }
-
-    logger.info(`🎬 Using Root Base Video: ${path.basename(WAV2LIP_BASE)}`);
-    await syncLip(audioPath, WAV2LIP_BASE, INIT_MERGE);
+    const lipSyncResult = await createLipSyncedVideo({ audioPath });
+    const INIT_MERGE = lipSyncResult.videoPath;
     logger.info(
       `✅ Step 3 Complete: Wav2Lip sync success in ${((Date.now() - step3Start) / 1000).toFixed(2)}s`,
     );
