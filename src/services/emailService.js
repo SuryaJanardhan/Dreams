@@ -636,8 +636,70 @@ const sendCarouselPostNotification = async (
  * @param {string} localSrtPath - Local path to the SRT file to attach
  */
 
+const notifySuccess = async ({ task, links }) => {
+  try {
+    await sendSuccessNotification(task, links);
+    return {
+      sent: true,
+      recipient: process.env.NOTIFICATION_EMAIL,
+      subject: task?.idea ? `Success: ${task.idea}` : "Success notification",
+      error: null,
+    };
+  } catch (error) {
+    logger.error(`❌ Email failed: ${error.message}`);
+    return {
+      sent: false,
+      recipient: process.env.NOTIFICATION_EMAIL,
+      subject: task?.idea ? `Success: ${task.idea}` : "Success notification",
+      error,
+    };
+  }
+};
+
+const notifyFailure = async ({ task, error, step }) => {
+  try {
+    await sendErrorNotification(task, error, step);
+    return {
+      sent: true,
+      recipient: process.env.NOTIFICATION_EMAIL,
+      subject: task?.idea ? `Failure: ${task.idea}` : "Failure notification",
+      error: null,
+    };
+  } catch (notificationError) {
+    logger.error(`❌ Error email failed: ${notificationError.message}`);
+    return {
+      sent: false,
+      recipient: process.env.NOTIFICATION_EMAIL,
+      subject: task?.idea ? `Failure: ${task.idea}` : "Failure notification",
+      error: notificationError,
+    };
+  }
+};
+
+const notifyStatusUpdate = async ({ status, details, aiSuggestions }) => {
+  try {
+    await sendStatusUpdate(status, details, aiSuggestions);
+    return {
+      sent: true,
+      recipient: process.env.NOTIFICATION_EMAIL,
+      subject: `Status update: ${status}`,
+      error: null,
+    };
+  } catch (error) {
+    logger.error(`❌ Status email failed: ${error.message}`);
+    return {
+      sent: false,
+      recipient: process.env.NOTIFICATION_EMAIL,
+      subject: `Status update: ${status}`,
+      error,
+    };
+  }
+};
 
 module.exports = {
+  notifyFailure,
+  notifyStatusUpdate,
+  notifySuccess,
   sendSuccessNotification,
   sendErrorNotification,
   sendStatusUpdate,

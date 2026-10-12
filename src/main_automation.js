@@ -13,8 +13,8 @@ const {
 } = require("./services/scriptService");
 const { createSubtitleTrack } = require("./utils/subtitles");
 const {
-  sendErrorNotification,
-  sendSuccessNotification,
+  notifyFailure,
+  notifySuccess,
 } = require("./services/emailService");
 const Groq = require("groq-sdk");
 const logger = require("./config/logger");
@@ -192,9 +192,7 @@ async function main() {
       await markTaskPosted(task, links);
 
       // Final Success Email (will indicate partial if necessary)
-      await sendSuccessNotification(task, links).catch((e) =>
-        logger.error(`❌ Email failed: ${e.message}`),
-      );
+      await notifySuccess({ task, links });
     } else {
       // If ALL 3 failed, we treat it as a total failure
       const error = new Error(
@@ -221,9 +219,7 @@ async function main() {
     await markTaskFailed(task, err);
 
     // Send Error Email - NOW ENABLED
-    await sendErrorNotification(task, err, currentStep).catch((e) =>
-      logger.error(`❌ Error email failed: ${e.message}`),
-    );
+    await notifyFailure({ task, error: err, step: currentStep });
   }
 }
 
