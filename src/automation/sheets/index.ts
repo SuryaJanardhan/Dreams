@@ -3,6 +3,7 @@ import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import type { Config } from "../operations/config.js";
 import { Http } from "../operations/http.js";
+import { platforms } from "../domain.js";
 import type { Progress, Task } from "../domain.js";
 const cellsSchema = z.object({
   values: z
@@ -352,13 +353,39 @@ export class Sheets {
           const value: unknown = JSON.parse(raw);
           progress = progressSchema.parse(value);
         } catch {
-          await this.pause(
-            `Stale Processing row ${offset + 2} has invalid/missing saved progress`,
-          );
-          throw new Error(
-            `Interrupted row ${offset + 2}: saved progress unreadable`,
-          );
+          // Legacy jobs may have Processing without the new progress JSON. Reconstruct only
+          // diagnostic evidence: never infer verified success, resume work or submit again.
+          const rowNumber = offset + 2;
+          const time = new Date().toISOString();
+          progress = {
+            jobId: cell(row, "job") || `legacy-interrupted-${randomUUID()}`,
+            task: {
+              id: cell(row, "id") || randomUUID(),
+              row: rowNumber,
+              idea: cell(row, "idea") || `Interrupted row ${rowNumber}`,
+              description: cell(row, "description"),
+              narration: cell(row, "narration"),
+            },
+            status: "Interrupted",
+            stage: "initialization",
+            lastCompleted: null,
+            startedAt: cell(row, "started") || time,
+            updatedAt: time,
+            grades: {},
+            cleanup: [],
+            remarks: `Legacy Processing row ${rowNumber} has no readable saved progress. Previous stage, remote consumers and cleanup ownership are unknown; existing links are retained but not treated as newly verified. Manual investigation required.`,
+            publications: platforms.map((platform) => {
+              const link = cell(row, platform);
+              return {
+                platform,
+                state: "Unknown" as const,
+                detail: "Prior run interrupted; no submission will be retried",
+                ...(z.url().safeParse(link).success ? { url: link } : {}),
+              };
+            }),
+          };
         }
+        progress.task.row = offset + 2;
         return { kind: "interrupted" as const, progress };
       }
     for (const [offset, row] of rows.entries()) {

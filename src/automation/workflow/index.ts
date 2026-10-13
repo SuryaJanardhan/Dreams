@@ -72,8 +72,7 @@ export async function runWorkflow(
     if (intake.kind === "interrupted") {
       progress = intake.progress;
       progress.status = "Interrupted";
-      progress.remarks =
-        "A previous run ended without finalization. No job was resumed.";
+      progress.remarks = `${progress.remarks} A previous run ended without finalization. No job was resumed.`;
     } else {
       progress = {
         jobId: randomUUID(),

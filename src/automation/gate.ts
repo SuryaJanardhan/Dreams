@@ -13,8 +13,7 @@ export async function gate() {
     const progress = intake.progress;
     progress.status = "Interrupted";
     progress.updatedAt = new Date().toISOString();
-    progress.remarks =
-      "Previous run was interrupted. No stage resumed and no upload retried. Inspect saved publication journal and any retained staging before clearing PAUSED.";
+    progress.remarks = `${progress.remarks} Previous run was interrupted. No stage resumed and no upload retried. Inspect saved publication journal and any retained staging before clearing PAUSED.`;
     await sheets.pause(progress.remarks);
     await sheets.save(progress);
     const secrets = [
