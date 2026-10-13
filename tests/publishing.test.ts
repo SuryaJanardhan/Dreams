@@ -187,3 +187,71 @@ test("an unverified Instagram consumer does not prevent Facebook attempt or allo
     await workspace.cleanup();
   }
 });
+
+test("durable staging and submission intents precede remote uploads and retain provider identifiers", async () => {
+  const http = new ProviderFixture();
+  const { workspace, publisher, video, plan } = await fixture(http);
+  const snapshots: import("../src/automation/domain.js").PublicationJournal[] =
+    [];
+  try {
+    await publisher.publish(
+      video,
+      plan,
+      workspace,
+      async () => {},
+      async (journal) => {
+        snapshots.push(structuredClone(journal));
+        if (
+          journal.operations.some(
+            (op) =>
+              op.platform === "youtube" &&
+              op.phase === "upload" &&
+              op.state === "Intent",
+          )
+        )
+          assert.ok(
+            !http.calls.some((call) => call.url.includes("upload/session")) ||
+              journal.operations.some(
+                (op) => op.platform === "youtube" && op.state === "Accepted",
+              ),
+          );
+      },
+    );
+    assert.equal(snapshots[0]?.staging?.state, "Planned");
+    assert.ok(
+      snapshots.some((snapshot) =>
+        snapshot.operations.some(
+          (op) =>
+            op.platform === "instagram" &&
+            op.phase === "publish" &&
+            op.id === "ig-1",
+        ),
+      ),
+    );
+    await publisher.cleanup();
+    assert.equal(snapshots.at(-1)?.staging?.state, "Deleted");
+  } finally {
+    await workspace.cleanup();
+  }
+});
+test("failed journal persistence prevents remote side effects", async () => {
+  const http = new ProviderFixture();
+  const { workspace, publisher, video, plan } = await fixture(http);
+  try {
+    await assert.rejects(
+      publisher.publish(
+        video,
+        plan,
+        workspace,
+        async () => {},
+        async () => {
+          throw new Error("Sheet unavailable");
+        },
+      ),
+      /journal could not be saved/,
+    );
+    assert.equal(http.calls.length, 0);
+  } finally {
+    await workspace.cleanup();
+  }
+});

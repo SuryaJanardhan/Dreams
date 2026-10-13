@@ -105,3 +105,24 @@ export function redact(text: string, secrets: readonly string[]): string {
     )
     .slice(0, 4000);
 }
+
+/** Control-plane validation does not require voice/render/publishing credentials. */
+export function loadSheetsConfig(env: NodeJS.ProcessEnv = process.env) {
+  const minimal = z
+    .object({
+      GOOGLE_SHEET_ID: z.string().min(1),
+      GOOGLE_CREDENTIALS: z.string().min(1),
+      SHEET_TAB: z.string().default("Sheet1"),
+    })
+    .safeParse(env);
+  if (!minimal.success)
+    throw new Error("Sheets control credentials or Sheet ID missing");
+  try {
+    const value: unknown = JSON.parse(minimal.data.GOOGLE_CREDENTIALS);
+    return { ...minimal.data, credentials: serviceAccount.parse(value) };
+  } catch {
+    throw new Error(
+      "Sheets control credentials must be raw service-account JSON",
+    );
+  }
+}

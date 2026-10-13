@@ -58,7 +58,7 @@ for (const topic of ["API", "Load Balancer", "Cache"])
           "-i",
           "sine=frequency=440:sample_rate=24000",
           "-t",
-          "0.25",
+          "0.75",
           audio,
         ],
         signal,
@@ -70,15 +70,15 @@ for (const topic of ["API", "Load Balancer", "Cache"])
         beats: [{ id: "explain", text: topic, visual: "diagram" }],
         grade: 100,
       };
-      const words = [{ text: topic, start: 0, end: 0.25 }];
+      const words = [{ text: topic, start: 0, end: 0.75 }];
       const track: CaptionTrack = {
         words,
-        duration: 0.25,
-        beats: [{ ...plan.beats[0]!, start: 0, end: 0.25 }],
+        duration: 0.75,
+        beats: [{ ...plan.beats[0]!, start: 0, end: 0.75 }],
       };
       const result = await renderVideo(
         plan,
-        { path: audio, duration: 0.25, sampleRate: 24000 },
+        { path: audio, duration: 0.75, sampleRate: 24000 },
         track,
         workspace,
         {
@@ -94,7 +94,7 @@ for (const topic of ["API", "Load Balancer", "Cache"])
       assert.equal(result.fps, 60);
       assert.equal(result.width, 1080);
       assert.equal(result.height, 1920);
-      assert.ok(Math.abs(result.duration - 0.35) < 0.1);
+      assert.ok(Math.abs(result.duration - 0.85) < 0.1);
     } finally {
       await workspace.cleanup();
     }

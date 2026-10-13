@@ -49,3 +49,17 @@ The legacy Docker entry point, old server/controller paths, composer UI and vend
 ## Local verification record
 
 Strict TypeScript build and whitespace checks passed. All 17 offline checks passed, covering captions, publishing, frame rendering, Sheets, workspace, cancellation and stale-job recovery. Actual short frame fixtures were encoded at 1080×1920/60 fps. Python engine syntax compiled, but model inference was not exercised. Compatible dependency fixes and an explicit Nodemailer 10.1 upgrade reduced the npm audit result from 12 advisories to zero at verification time. No real provider publication or live email was sent.
+
+## Reliability and creative improvements
+
+The quality update adds a Sheets-only eligibility/control gate before browser, FFmpeg and CPU engine setup. The production entry still rechecks eligibility after full preflight. An interrupted row is reported and paused without resuming or republishing. Control/setup reporting validates only its own credentials; dependency-installation failures and hard runner loss remain best-effort limitations.
+
+Publication journal checkpoints persist staging ownership, active consumers and submission intent before remote side effects, then retain provider identifiers when known. A failed journal save stops further submissions. Staging deletion is recorded only after remote deletion succeeds. This is diagnostic state, not an automatic recovery/repost mechanism. No credentials or resumable-session URLs are written into the journal.
+
+Typed finalization outcomes separate published posts from cleanup, durable persistence, pause and notification. Required persistence/cleanup failures make the Action fail even if every post was published. Notifications are recorded as pending before delivery, then sent/failed afterward. Email-only failure still does not change remote publication success. Task-ID write failures propagate as infrastructure incidents instead of marking valid rows Invalid.
+
+Generated plans now include a shared example, payoff, object registry, colors and layout rules. Independent custom AI scenes use that shared direction and must show causal diagram changes. Code restrictions cover more asynchronous/callback capabilities, CSS animations are disabled, and the one repair attempt gets a fresh browser. Sampled visual checks include more timeline/word anchors, text density, SVG readability and measurable motion; grades represent structural checks, not artistic quality or factual truth.
+
+Captions follow punctuation, pause boundaries and a conservative text budget, with a short pause hold and stable layout. The caption DOM updates only when its displayed state changes. Music fades in/out and retains voice ducking. Narration is checked for audible energy after processing; final mix loudness/true peak are measured. Supplied narration keeps exact punctuation/wording. Stage timings, orchestrator/voice peak RSS and render/audio measurements are logged and saved with job progress for the real Actions benchmark.
+
+Legacy runtime retirement and exact CPU/model dependency pinning remain follow-up work after a complete production integration run. Existing uncommitted legacy caller edits remain preserved. No additional provider, AI visual critic, output archive, presenter or automatic job recovery was introduced.

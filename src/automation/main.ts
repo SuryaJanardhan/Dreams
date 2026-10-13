@@ -101,8 +101,8 @@ export async function main() {
           generator: sceneGenerator(config, gemini),
           log: (text) => console.log(redact(text, secrets)),
         }),
-      publish: (video, plan, workspace, record) =>
-        publisher.publish(video, plan, workspace, record),
+      publish: (video, plan, workspace, record, journal) =>
+        publisher.publish(video, plan, workspace, record, journal),
       cleanupStaging: () => {
         finalize();
         return publisher.cleanup();
@@ -121,15 +121,13 @@ export async function main() {
               jobId: result.progress.jobId,
               remarks: redact(result.progress.remarks, secrets),
               notification: result.notification,
+              finalization: result.progress.finalization,
+              metrics: result.progress.metrics,
             },
       ),
     );
     if ("progress" in result)
-      process.exitCode =
-        result.state === "Completed" &&
-        !result.progress.remarks.includes("Cleanup Failed")
-          ? 0
-          : 1;
+      process.exitCode = result.operationalSuccess ? 0 : 1;
   } catch (error) {
     console.error(redact(message(error), secrets));
     await initialNotifier

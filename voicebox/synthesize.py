@@ -1,6 +1,7 @@
 """Minimal, uncached CPU Voicebox inference contract for Actions."""
 import argparse
 import json
+import resource
 from pathlib import Path
 import numpy as np
 import soundfile as sf
@@ -31,7 +32,7 @@ def synthesize(args):
     Path(args.output).parent.mkdir(parents=True, exist_ok=True)
     sf.write(args.output, audio, sample_rate)
     print(json.dumps({"path": str(Path(args.output).resolve()), "duration": len(audio) / sample_rate,
-                      "sampleRate": sample_rate, "rms": rms, "peak": peak}))
+                      "sampleRate": sample_rate, "rms": rms, "peak": peak, "peakRssMb": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024}))
 
 
 if __name__ == "__main__":
