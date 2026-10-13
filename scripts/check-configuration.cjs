@@ -40,7 +40,7 @@ async function main(){
  // Authentication/read checks only; never generate content, create uploads or publish.
  async function read(url,headers){
   try{const response=await fetch(url,{headers,signal:AbortSignal.timeout(20000)});const value=await response.json().catch(()=>({}));return {status:response.status,ok:response.ok,value};}
-  catch{return {status:null,ok:false,value:{}};}
+  catch(error){return {status:null,ok:false,value:{},errorCode:typeof error.cause?.code==='string'&&/^[A-Z_]+$/.test(error.cause.code)?error.cause.code:error.name};}
  }
  try{
   const response=await fetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({client_id:process.env.GOOGLE_CLIENT_ID??'',client_secret:process.env.GOOGLE_CLIENT_SECRET??'',refresh_token:process.env.YOUTUBE_REFRESH_TOKEN??'',grant_type:'refresh_token'}),signal:AbortSignal.timeout(20000)});
@@ -56,6 +56,8 @@ async function main(){
  const graph='https://graph.facebook.com/'+(process.env.GRAPH_API_VERSION||'v23.0');
  const instagram=await read(graph+'/'+encodeURIComponent(process.env.INSTAGRAM_ACCOUNT_ID??'')+'?fields=id',{Authorization:'Bearer '+(process.env.INSTAGRAM_ACCESS_TOKEN??'')});
  const facebook=await read(graph+'/'+encodeURIComponent(process.env.FACEBOOK_PAGE_ID??'')+'?fields=id,access_token',{Authorization:'Bearer '+(process.env.FACEBOOK_ACCESS_TOKEN??'')});
+ let storageUrl;try{storageUrl=new URL(process.env.SUPABASE_URL??'');}catch{}
+ report.supabaseConfiguration={urlValid:Boolean(storageUrl),usesHttps:storageUrl?.protocol==='https:',hasOuterWhitespace:(process.env.SUPABASE_URL??'')!==(process.env.SUPABASE_URL??'').trim(),hasOuterQuotes:/^["']|["']$/.test(process.env.SUPABASE_URL??''),hasUnexpectedPath:Boolean(storageUrl&&storageUrl.pathname!=='/'),usesStandardSupabaseHost:Boolean(storageUrl?.hostname.endsWith('.supabase.co')),connectionError:storage.errorCode??null};
  report.providerReadChecks={geminiNarration:{model:scriptModel,status:scriptModelRead.status},geminiVisuals:{model:visualModel,status:visualModelRead.status},assemblyai:{status:assembly.status},supabase:{status:storage.status,bucketPublic:storage.value.public===true},instagram:{status:instagram.status},facebook:{status:facebook.status,pageTokenAvailable:Boolean(facebook.value.access_token)}};
  const output=JSON.stringify(report,null,2);console.log(output);
  if(process.env.GITHUB_STEP_SUMMARY)await fs.appendFile(process.env.GITHUB_STEP_SUMMARY,'## Read-only configuration diagnostics\n\n```json\n'+output+'\n```\n');
