@@ -1,5 +1,4 @@
-const { generateScript } = require("../services/scriptService");
-const cleanLLMData = require("../utils/textCleaner");
+const { generateScriptForTask } = require("../services/scriptService");
 const logger = require("../config/logger");
 
 const generateScriptEndpoint = async (req, res) => {
@@ -12,13 +11,12 @@ const generateScriptEndpoint = async (req, res) => {
 
     logger.info(`📝 Generating script for topic: ${topic}`);
 
-    const rawScript = await generateScript(topic);
-    const cleanedScript = cleanLLMData.extractConversation(rawScript);
+    const scriptResult = await generateScriptForTask({ idea: topic });
 
     res.json({
       success: true,
-      script: cleanedScript,
-      rawScript: rawScript,
+      script: scriptResult.script,
+      rawScript: scriptResult.script,
     });
   } catch (error) {
     logger.error("Script generation error:", error);

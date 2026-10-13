@@ -3,6 +3,56 @@ const path = require('path');
 const fs = require('fs');
 const logger = require('../config/logger');
 
+const WAV2LIP_DIR = path.resolve(__dirname, '../../wav2lip');
+const DEFAULT_BASE_VIDEO = path.resolve(__dirname, '../../assets/Base-vedio.mp4');
+const DEFAULT_OUTPUT_VIDEO = path.resolve(__dirname, '../../merged_output.mp4');
+const DEFAULT_CHECKPOINT = path.join(WAV2LIP_DIR, 'checkpoints/wav2lip_gan.pth');
+const INFERENCE_SCRIPT = path.join(WAV2LIP_DIR, 'inference.py');
+const BASE_FACE_CACHE = path.resolve('Base-vedio.npy');
+const MIN_BASE_VIDEO_BYTES = 1000000;
+
+function assertUsableBaseVideo(facePath) {
+    if (!fs.existsSync(facePath)) {
+        throw new Error(`Missing base video for Wav2Lip at ${facePath}`);
+    }
+
+    const stats = fs.statSync(facePath);
+    if (stats.size < MIN_BASE_VIDEO_BYTES) {
+        throw new Error(
+            `CRITICAL: Base video at ${facePath} is only ${(stats.size / 1024).toFixed(2)} KB. ` +
+            `This is likely a Git LFS pointer or corrupted file. ` +
+            `Please ensure you have pulled the actual file or deleted the stub to allow auto-download.`
+        );
+    }
+}
+
+function ensureWav2LipRuntime() {
+    if (!fs.existsSync(WAV2LIP_DIR)) {
+        throw new Error(`Wav2Lip directory not found at ${WAV2LIP_DIR}`);
+    }
+
+    if (!fs.existsSync(INFERENCE_SCRIPT)) {
+        throw new Error(`Wav2Lip inference script not found at ${INFERENCE_SCRIPT}`);
+    }
+
+    const tempDir = path.join(WAV2LIP_DIR, 'temp');
+    if (!fs.existsSync(tempDir)) {
+        logger.info(`📁 Creating missing temp directory: ${tempDir}`);
+        fs.mkdirSync(tempDir, { recursive: true });
+    }
+}
+
+function resolvePremiumMode(options = {}) {
+    const requested = options.restorer === 'gfpgan' || process.env.USE_PREMIUM_WAV2LIP === 'true';
+    const restorerPath = options.restorerPath || path.join(WAV2LIP_DIR, 'checkpoints/GFPGANv1.4.pth');
+
+    return {
+        requested,
+        restorerPath,
+        enabled: requested && fs.existsSync(restorerPath),
+    };
+}
+
 /**
  * Syncs lips of a face video with an audio file using Wav2Lip
  * @param {string} audioPath - Path to the source audio
@@ -16,57 +66,25 @@ async function syncLip(audioPath, facePath, outputPath, options = {}) {
     const absFacePath = path.resolve(facePath);
     const absOutputPath = path.resolve(outputPath);
 
-    // GUARD: Check if face video is a tiny stub (e.g., LFS pointer or corrupted)
-    if (fs.existsSync(absFacePath)) {
-        const stats = fs.statSync(absFacePath);
-        if (stats.size < 1000000) { // Less than 1MB is almost certainly a stub/LFS pointer for a video
-            throw new Error(
-                `CRITICAL: Base video at ${facePath} is only ${(stats.size/1024).toFixed(2)} KB. ` +
-                `This is likely a Git LFS pointer or corrupted file. ` +
-                `Please ensure you have pulled the actual file or deleted the stub to allow auto-download.`
-            );
-        }
-    }
+    assertUsableBaseVideo(absFacePath);
+
     // Use "Elite" Sync Settings: bottom padding for chin + no smoothing for snapping
     const pads = options.pads || [0, 20, 0, 0]; // Extra bottom padding for chin movement
     const nosmooth = options.nosmooth !== undefined ? options.nosmooth : true; // Default to snap for tech content
-    
+
     // Check for pre-computed face cache to save time
-    const cachePath = path.resolve('Base-vedio.npy');
-    const hasCache = fs.existsSync(cachePath);
-    
-    const wav2lipDir = path.resolve(__dirname, '../../wav2lip');
-    const checkpoint = path.join(wav2lipDir, 'checkpoints/wav2lip_gan.pth');
-    const inferenceScript = path.join(wav2lipDir, 'inference.py');
+    const hasCache = fs.existsSync(BASE_FACE_CACHE);
 
-    // Ensure wav2lip directory exists
-    if (!fs.existsSync(wav2lipDir)) {
-        throw new Error(`Wav2Lip directory not found at ${wav2lipDir}`);
-    }
-
-    // Ensure temp directory exists inside wav2lip
-    const tempDir = path.join(wav2lipDir, 'temp');
-    if (!fs.existsSync(tempDir)) {
-        logger.info(`📁 Creating missing temp directory: ${tempDir}`);
-        fs.mkdirSync(tempDir, { recursive: true });
-    }
-
-    // Command to run inference
-    const command = `python "${inferenceScript}" ` +
-                    `--checkpoint_path "${checkpoint}" ` +
-                    `--face "${absFacePath}" ` +
-                    `--audio "${absAudioPath}" ` +
-                    `--outfile "${absOutputPath}" ` +
-                    `--resize_factor 2`;
+    ensureWav2LipRuntime();
 
     logger.info(`👄 Starting Wav2Lip Sync (Safe Mode - CPU)...`);
-    logger.debug(`Command: ${command}`);
+    logger.debug(`Wav2Lip output=${absOutputPath} face=${absFacePath} audio=${absAudioPath}`);
 
     return new Promise((resolve, reject) => {
         // Use spawn for real-time streaming of logs
         const args = [
-            inferenceScript,
-            '--checkpoint_path', checkpoint,
+            INFERENCE_SCRIPT,
+            '--checkpoint_path', DEFAULT_CHECKPOINT,
             '--face', absFacePath,
             '--audio', absAudioPath,
             '--outfile', absOutputPath,
@@ -75,23 +93,23 @@ async function syncLip(audioPath, facePath, outputPath, options = {}) {
 
         // Pass face detection cache if it exists (Triggers OOM-safe streaming mode in inference.py)
         if (hasCache) {
-            args.push('--face_det_results', cachePath);
-            logger.info(`📦 Using pre-computed face boxes: ${cachePath}`);
+            args.push('--face_det_results', BASE_FACE_CACHE);
+            logger.info(`📦 Using pre-computed face boxes: ${BASE_FACE_CACHE}`);
         }
 
         // Add GFPGAN Premium Restoration if requested
-        if (options.restorer === 'gfpgan' || process.env.USE_PREMIUM_WAV2LIP === 'true') {
-            const restorerPath = options.restorerPath || path.join(wav2lipDir, 'checkpoints/GFPGANv1.4.pth');
-            if (fs.existsSync(restorerPath)) {
+        const premiumMode = resolvePremiumMode(options);
+        if (premiumMode.requested) {
+            if (premiumMode.enabled) {
                 args.push('--restorer', 'gfpgan');
-                args.push('--restorer_path', restorerPath);
+                args.push('--restorer_path', premiumMode.restorerPath);
                 logger.info(`✨ Premium Mode: Using GFPGAN face restoration.`);
             } else {
-                logger.warn(`⚠️ GFPGAN model not found at ${restorerPath}. Skipping premium restoration.`);
+                logger.warn(`⚠️ GFPGAN model not found at ${premiumMode.restorerPath}. Skipping premium restoration.`);
             }
         }
-        
-        const proc = spawn('python', args, { cwd: wav2lipDir });
+
+        const proc = spawn('python', args, { cwd: WAV2LIP_DIR });
 
         proc.stdout.on('data', (data) => {
             const output = data.toString().trim();
@@ -141,4 +159,25 @@ async function syncLipHQ(audioPath, facePath, outputPath) {
     return syncLip(audioPath, facePath, outputPath);
 }
 
-module.exports = { syncLip, syncLipHQ };
+async function createLipSyncedVideo({
+    audioPath,
+    baseVideoPath = DEFAULT_BASE_VIDEO,
+    outputPath = DEFAULT_OUTPUT_VIDEO,
+    options = {},
+}) {
+    if (!audioPath) {
+        throw new Error('audioPath is required for lip-sync generation');
+    }
+
+    const videoPath = await syncLip(audioPath, baseVideoPath, outputPath, options);
+    const premiumMode = resolvePremiumMode(options);
+
+    return {
+        videoPath,
+        audioPath: path.resolve(audioPath),
+        baseVideoPath: path.resolve(baseVideoPath),
+        premiumMode: premiumMode.enabled,
+    };
+}
+
+module.exports = { createLipSyncedVideo, syncLip, syncLipHQ };

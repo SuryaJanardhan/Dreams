@@ -180,6 +180,27 @@ const createSubtitlesFromAudio = async (audioFilePath, outputPath = null) => {
   }
 };
 
+const createSubtitleTrack = async ({
+  audioPath,
+  outputPath = null,
+  rootCopyPath = path.resolve("subtitles.srt"),
+} = {}) => {
+  if (!audioPath) {
+    throw new Error("audioPath is required for subtitle generation");
+  }
+
+  const subtitleResult = await createSubtitlesFromAudio(audioPath, outputPath);
+
+  fs.copyFileSync(subtitleResult.subtitlesPath, rootCopyPath);
+
+  return {
+    subtitlesPath: subtitleResult.subtitlesPath,
+    rootCopyPath,
+    transcript: subtitleResult.content,
+    provider: "assemblyai",
+  };
+};
+
 const upload_file = async (api_token, filePath) => {
   try {
     if (!fs.existsSync(filePath)) {
@@ -287,6 +308,7 @@ const exportSubtitles = async (api_token, transcriptId, format) => {
 module.exports = {
   generateSubtitlesFromAudio,
   saveSubtitlesToFile,
+  createSubtitleTrack,
   createSubtitlesFromAudio,
   getAudioDuration,
   validateSRTFormat,

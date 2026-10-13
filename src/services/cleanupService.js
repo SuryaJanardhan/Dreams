@@ -375,13 +375,28 @@ const cleanupFinalVideoFolder = async () => {
   }
 };
 
+const prepareWorkflowWorkspace = async () => {
+  return initializeDirectories();
+};
+
+const cleanupAfterSuccess = async () => {
+  return cleanupAllMediaFolders();
+};
+
+const cleanupAfterFailure = async () => {
+  return cleanupOnError();
+};
+
 module.exports = {
   cleanDirectory,
+  cleanupAfterFailure,
+  cleanupAfterSuccess,
   cleanupAllMediaFolders,
   cleanupOldFiles,
   getFolderSizes,
   ensureDirectoryExists,
   initializeDirectories,
+  prepareWorkflowWorkspace,
   cleanupRootDirectory,
   cleanupOnError,
   ensureEssentialVideoFiles,
