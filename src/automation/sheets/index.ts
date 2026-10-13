@@ -9,34 +9,25 @@ const cellsSchema = z.object({
     .array(z.array(z.union([z.string(), z.number(), z.boolean()])))
     .optional(),
 });
-const progressSchema: z.ZodType<Progress> = z.object({
-  jobId: z.string(),
-  task: z.object({
-    id: z.string(),
-    row: z.number().int().positive(),
-    idea: z.string(),
-    description: z.string(),
-    narration: z.string(),
-  }),
-  status: z.enum([
-    "Processing",
-    "Completed",
-    "Failed",
-    "Partial",
-    "Cancelled",
-    "Interrupted",
-  ]),
-  stage: z.enum([
-    "initialization",
-    "content",
-    "voice",
-    "captions",
-    "rendering",
-    "publishing",
-    "cleanup",
-  ]),
-  lastCompleted: z
-    .enum([
+const progressSchema: z.ZodType<Progress> = z
+  .object({
+    jobId: z.string(),
+    task: z.object({
+      id: z.string(),
+      row: z.number().int().positive(),
+      idea: z.string(),
+      description: z.string(),
+      narration: z.string(),
+    }),
+    status: z.enum([
+      "Processing",
+      "Completed",
+      "Failed",
+      "Partial",
+      "Cancelled",
+      "Interrupted",
+    ]),
+    stage: z.enum([
       "initialization",
       "content",
       "voice",
@@ -44,37 +35,86 @@ const progressSchema: z.ZodType<Progress> = z.object({
       "rendering",
       "publishing",
       "cleanup",
-    ])
-    .nullable(),
-  startedAt: z.string(),
-  updatedAt: z.string(),
-  remarks: z.string(),
-  cleanup: z.array(z.string()),
-  grades: z.record(z.string(), z.number()),
-  publications: z.array(
-    z.discriminatedUnion("state", [
-      z.object({
-        platform: z.enum(["youtube", "instagram", "facebook"]),
-        state: z.literal("Published"),
-        id: z.string().min(1),
-        url: z.url(),
-      }),
-      z
-        .object({
-          platform: z.enum(["youtube", "instagram", "facebook"]),
-          state: z.enum(["Failed", "Unknown", "NotAttempted"]),
-          detail: z.string(),
-          id: z.string().optional(),
-          url: z.string().optional(),
-        })
-        .transform(({ id, url, ...rest }) => ({
-          ...rest,
-          ...(id === undefined ? {} : { id }),
-          ...(url === undefined ? {} : { url }),
-        })),
     ]),
-  ),
-});
+    lastCompleted: z
+      .enum([
+        "initialization",
+        "content",
+        "voice",
+        "captions",
+        "rendering",
+        "publishing",
+        "cleanup",
+      ])
+      .nullable(),
+    startedAt: z.string(),
+    updatedAt: z.string(),
+    remarks: z.string(),
+    cleanup: z.array(z.string()),
+    grades: z.record(z.string(), z.number()),
+    metrics: z.record(z.string(), z.number()).optional(),
+    journal: z
+      .object({
+        staging: z
+          .object({
+            key: z.string(),
+            state: z.enum(["Planned", "Ready", "Deleted"]),
+            consumers: z.array(z.enum(["youtube", "instagram", "facebook"])),
+          })
+          .nullable(),
+        operations: z.array(
+          z
+            .object({
+              platform: z.enum(["youtube", "instagram", "facebook"]),
+              phase: z.enum(["upload", "container", "publish"]),
+              state: z.enum(["Intent", "Accepted"]),
+              id: z.string().optional(),
+            })
+            .transform(({ id, ...rest }) => ({
+              ...rest,
+              ...(id === undefined ? {} : { id }),
+            })),
+        ),
+      })
+      .optional(),
+    finalization: z
+      .object({
+        cleanup: z.enum(["passed", "failed"]),
+        persistence: z.enum(["passed", "failed"]),
+        pause: z.enum(["not-required", "saved", "failed"]),
+        notification: z.enum(["pending", "sent", "failed"]),
+      })
+      .optional(),
+    publications: z.array(
+      z.discriminatedUnion("state", [
+        z.object({
+          platform: z.enum(["youtube", "instagram", "facebook"]),
+          state: z.literal("Published"),
+          id: z.string().min(1),
+          url: z.url(),
+        }),
+        z
+          .object({
+            platform: z.enum(["youtube", "instagram", "facebook"]),
+            state: z.enum(["Failed", "Unknown", "NotAttempted"]),
+            detail: z.string(),
+            id: z.string().optional(),
+            url: z.string().optional(),
+          })
+          .transform(({ id, url, ...rest }) => ({
+            ...rest,
+            ...(id === undefined ? {} : { id }),
+            ...(url === undefined ? {} : { url }),
+          })),
+      ]),
+    ),
+  })
+  .transform(({ journal, finalization, metrics, ...rest }) => ({
+    ...rest,
+    ...(metrics === undefined ? {} : { metrics }),
+    ...(journal === undefined ? {} : { journal }),
+    ...(finalization === undefined ? {} : { finalization }),
+  }));
 const aliases: Record<string, string[]> = {
   idea: ["idea", "title", "topic"],
   description: ["description", "context"],
@@ -161,19 +201,27 @@ export function taskFromRow(
 }
 export class Sheets {
   private fields: Record<string, number> = {};
-  private readonly auth;
+  private readonly auth: {
+    getAccessToken(): Promise<string | null | undefined>;
+  };
   private readonly base: string;
   constructor(
-    private readonly config: Config,
+    private readonly config: Pick<
+      Config,
+      "credentials" | "GOOGLE_SHEET_ID" | "SHEET_TAB"
+    >,
     private readonly http: Http,
+    auth?: { getAccessToken(): Promise<string | null | undefined> },
   ) {
-    this.auth = new google.auth.GoogleAuth({
-      credentials: {
-        client_email: config.credentials.client_email,
-        private_key: config.credentials.private_key,
-      },
-      scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-    });
+    this.auth =
+      auth ??
+      new google.auth.GoogleAuth({
+        credentials: {
+          client_email: config.credentials.client_email,
+          private_key: config.credentials.private_key,
+        },
+        scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+      });
     this.base = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(config.GOOGLE_SHEET_ID)}`;
   }
   private async headers() {
@@ -314,17 +362,22 @@ export class Sheets {
         return { kind: "interrupted" as const, progress };
       }
     for (const [offset, row] of rows.entries()) {
+      let selected: Task | null = null;
       try {
         const task = taskFromRow(row, offset + 2, this.fields);
         if (task) {
-          await this.values(task.row, { id: task.id });
-          return { kind: "task" as const, task };
+          // Persistence is deliberately outside the row-validation catch.
+          selected = task;
         }
       } catch (error) {
         await this.values(offset + 2, {
           status: "Invalid",
           remarks: error instanceof Error ? error.message : String(error),
         });
+      }
+      if (selected) {
+        await this.values(selected.row, { id: selected.id });
+        return { kind: "task" as const, task: selected };
       }
     }
     return { kind: "empty" as const };

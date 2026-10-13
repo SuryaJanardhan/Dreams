@@ -14,10 +14,12 @@ import type {
   RenderedVideo,
   TimedBeat,
   Workspace,
+  VisualDirection,
 } from "../domain.js";
 import type { Config } from "../operations/config.js";
 import { Gemini } from "../content/index.js";
-import { probe } from "../operations/media.js";
+import { probe, measureMix } from "../operations/media.js";
+import { captionPhrases, captionAt } from "./caption-layout.js";
 import { validateScene } from "./code.js";
 import type { SceneContext, Scene } from "./scene-contract.js";
 import type { gsap } from "gsap";
@@ -28,12 +30,15 @@ export interface SceneGenerator {
     beat: TimedBeat,
     words: CaptionTrack["words"],
     feedback: string,
+    direction?: VisualDirection,
   ): Promise<string>;
 }
-interface SceneWindow extends Window {
-  TrustedGsap: { gsap: typeof gsap };
-  GeneratedScene: { createScene(context: SceneContext): Scene };
-  sceneTimeline: gsap.core.Timeline;
+declare global {
+  interface Window {
+    TrustedGsap: { gsap: typeof gsap };
+    GeneratedScene: { createScene(context: SceneContext): Scene };
+    sceneTimeline: gsap.core.Timeline;
+  }
 }
 const css =
   "html,body{margin:0;width:1080px;height:1920px;overflow:hidden;background:#050505;color:#fff;font-family:Arial,sans-serif}#scene{position:absolute;left:60px;top:130px;width:900px;height:1310px;border:0}#captions{position:absolute;left:90px;top:1490px;width:840px;height:190px;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:12px;font-size:48px;line-height:1.3;font-weight:bold;text-align:center}";
@@ -72,11 +77,11 @@ async function deadline<T>(
 }
 export function sceneGenerator(config: Config, gemini: Gemini): SceneGenerator {
   return {
-    async generate(beat, words, feedback) {
+    async generate(beat, words, feedback, direction) {
       const result = await gemini.generate(
         config.GEMINI_VISUAL_MODEL,
         config.GEMINI_API_KEY_FOR_VISUALS,
-        `Write a custom TypeScript animation scene for a technical educational reel. Output JSON {source: string}. Explain this beat: ${JSON.stringify(beat)}. Actual timed narration words: ${JSON.stringify(words)}.
+        `Write a custom TypeScript animation scene for a technical educational reel. Output JSON {source: string}. Explain this beat: ${JSON.stringify(beat)}. Actual timed narration words: ${JSON.stringify(words)}. Shared direction for the WHOLE reel: ${JSON.stringify(direction ?? null)}. Reuse its object IDs, labels, colors and example, so adjacent scenes explain the same system. Show the causal event described in this beat, not just animated typography. Preserve stable positions and diagram vocabulary. Hold completed diagrams briefly rather than continuously shaking every object.
 Import type {SceneContext,Scene} from './scene-contract'; export function createScene(context:SceneContext):Scene. Context root is a 900x1310 safe-area element; timeline is an already paused GSAP timeline, duration is scene seconds, words are relative-time anchors. Build original HTML/SVG technical diagrams with dark background, cyan/magenta accents, clear connections, staged transitions, minimal keywords. No humans/presenter or captions. Text >=40px; keep every visible element inside root. The renderer owns all timing and captions.
 Use context.timeline.to/fromTo/set at explicit word/beat times; do not play timeline, add callbacks, independent timelines, clocks, timers, CSS animation, imports except the type contract, remote assets, canvas, video, external URLs, random, any, type assertions, eval, or global state. Use only context.root and provided timeline. Animate meaningful content throughout scene; avoid blank openings. SVG connectors must be precise. Return {dispose(){context.root.replaceChildren();}}. Ensure calling timeline.seek at any scene time produces the intended visual state without callbacks. ${feedback ? `Repair the prior rejected scene. Errors: ${feedback}` : ""}`,
         sourceSchema,
@@ -96,7 +101,7 @@ async function loadScene(
   await page.setContent(
     `<style>${css}</style><iframe id="scene" name="animation" sandbox="allow-scripts"></iframe><div id="captions"></div>`,
   );
-  const html = `<style>html,body{margin:0;background:#050505;color:white;font-family:Arial,sans-serif}#root{position:relative;width:900px;height:1310px;overflow:hidden}</style><div id="root"></div><script>${library.replace(/<\/script/gi, "<\\/script")}</script><script>${code.replace(/<\/script/gi, "<\\/script")}</script>`;
+  const html = `<style>html,body{margin:0;background:#050505;color:white;font-family:Arial,sans-serif}#root{position:relative;width:900px;height:1310px;overflow:hidden}*{animation:none!important;transition:none!important}</style><div id="root"></div><script>${library.replace(/<\/script/gi, "<\\/script")}</script><script>${code.replace(/<\/script/gi, "<\\/script")}</script>`;
   await page.locator("#scene").evaluate((element, html) => {
     if (!(element instanceof HTMLIFrameElement))
       throw new Error("Missing scene frame");
@@ -107,15 +112,14 @@ async function loadScene(
     (await page.waitForEvent("frameattached", { timeout: 10000 }));
   if (!frame) throw new Error("Animation frame missing");
   await frame.waitForFunction(
-    () =>
-      Boolean((window as unknown as SceneWindow).GeneratedScene?.createScene),
+    () => Boolean(window.GeneratedScene?.createScene),
     {},
     { timeout: 10000 },
   );
   await deadline(
     frame.evaluate(
       ({ duration, words }) => {
-        const runtime = window as unknown as SceneWindow;
+        const runtime = window;
         const root = document.getElementById("root");
         if (!root || typeof runtime.GeneratedScene?.createScene !== "function")
           throw new Error("Scene must export createScene");
@@ -160,7 +164,7 @@ async function setTime(
 ) {
   await deadline(
     frame.evaluate((time) => {
-      const runtime = window as unknown as SceneWindow;
+      const runtime = window;
       runtime.sceneTimeline.seek(time, true);
     }, time),
     5000,
@@ -170,6 +174,9 @@ async function setTime(
   );
   await page.locator("#captions").evaluate(
     (element, words) => {
+      const signature = JSON.stringify(words);
+      if (element.getAttribute("data-caption") === signature) return;
+      element.setAttribute("data-caption", signature);
       element.replaceChildren(
         ...words.map((word) => {
           const span = document.createElement("span");
@@ -185,7 +192,7 @@ async function setTime(
     })),
   );
 }
-async function inspectFrame(frame: Frame, page: Page): Promise<number> {
+async function inspectFrame(frame: Frame, page: Page): Promise<Buffer> {
   const errors = await frame.evaluate(() => {
     const root = document.getElementById("root");
     if (!root) return ["Missing root"];
@@ -212,11 +219,12 @@ async function inspectFrame(frame: Frame, page: Page): Promise<number> {
       if (
         element.children.length === 0 &&
         element.textContent?.trim() &&
-        !(element instanceof SVGElement) &&
         parseFloat(style.fontSize) < 36
       )
         errors.push("Scene text below readable minimum");
     }
+    if ((root.textContent ?? "").trim().length > 280)
+      errors.push("Diagram contains too much text for one scene");
     return [...new Set(errors)];
   });
   const buffer = await page.locator("#scene").screenshot();
@@ -232,15 +240,7 @@ async function inspectFrame(frame: Frame, page: Page): Promise<number> {
     );
   if (caption) errors.push("Caption text overflows safe area");
   if (errors.length) throw new Error(errors.join("; "));
-  return 100;
-}
-function captionGroup(words: CaptionTrack["words"], time: number) {
-  const index = words.findIndex(
-    (word) => word.start <= time && word.end > time,
-  );
-  if (index < 0) return [];
-  const start = Math.floor(index / 5) * 5;
-  return words.slice(start, start + 5);
+  return sharp(buffer).resize(180, 262).removeAlpha().raw().toBuffer();
 }
 export interface RenderOptions {
   config: Pick<Config, "root" | "COVER_INTRO_DURATION_SEC">;
@@ -258,23 +258,35 @@ export async function renderVideo(
   const { signal, generator, config } = options;
   signal.throwIfAborted();
   const library = gsapScript();
-  const browser = await chromium.launch({
-    headless: true,
-    args: ["--disable-dev-shm-usage"],
-  });
+  const phrases = captionPhrases(track.words);
+  const runtimeErrors: string[] = [];
+  async function execution() {
+    const browser = await chromium.launch({
+      headless: true,
+      args: ["--disable-dev-shm-usage"],
+    });
+    try {
+      const context = await browser.newContext({
+        viewport: { width: 1080, height: 1920 },
+        deviceScaleFactor: 1,
+      });
+      await context.route("**/*", (route) => route.abort());
+      const page = await context.newPage();
+      page.on("pageerror", (error) => runtimeErrors.push(error.message));
+      return { browser, page };
+    } catch (error) {
+      await browser.close();
+      throw error;
+    }
+  }
+  let { browser, page } = await execution();
   const abort = () => {
     void browser.close();
   };
   signal.addEventListener("abort", abort, { once: true });
-  const context = await browser.newContext({
-    viewport: { width: 1080, height: 1920 },
-    deviceScaleFactor: 1,
-  });
-  await context.route("**/*", (route) => route.abort()); // No scene access to providers, files, or credentials.
-  const page = await context.newPage();
-  const runtimeErrors: string[] = [];
-  page.on("pageerror", (error) => runtimeErrors.push(error.message));
   const accepted: { beat: TimedBeat; code: string }[] = [];
+  let checkedSamples = 0;
+  let changingScenes = 0;
   try {
     for (const beat of track.beats) {
       let error = "";
@@ -282,7 +294,12 @@ export async function renderVideo(
       for (let attempt = 0; attempt < 2; attempt++)
         try {
           runtimeErrors.length = 0;
-          const source = await generator.generate(beat, track.words, error);
+          const source = await generator.generate(
+            beat,
+            track.words,
+            error,
+            plan.direction,
+          );
           const compiled = await validateScene(
             source,
             `${beat.id}.ts`,
@@ -297,25 +314,63 @@ export async function renderVideo(
             beat,
             track.words,
           );
-          for (const fraction of [0.05, 0.5, 0.95]) {
-            const relative = (beat.end - beat.start) * fraction;
+          const duration = beat.end - beat.start;
+          const anchors = track.words
+            .filter((word) => word.start >= beat.start && word.start < beat.end)
+            .filter(
+              (_word, index) =>
+                index % Math.max(1, Math.ceil(track.words.length / 8)) === 0,
+            )
+            .map((word) =>
+              Math.min(
+                duration * 0.98,
+                Math.max(duration * 0.02, word.start - beat.start),
+              ),
+            );
+          const times = [
+            ...new Set(
+              [0.02, 0.05, 0.25, 0.5, 0.75, 0.95, 0.98]
+                .map((fraction) => duration * fraction)
+                .concat(anchors),
+            ),
+          ].sort((a, b) => a - b);
+          let previous: Buffer | undefined;
+          let changed = false;
+          for (const relative of times) {
             await setTime(
               frame,
               page,
               browser,
               relative,
-              captionGroup(track.words, beat.start + relative),
+              captionAt(phrases, beat.start + relative),
               beat.start + relative,
             );
-            await inspectFrame(frame, page);
+            const sample = await inspectFrame(frame, page);
+            if (previous) {
+              let difference = 0;
+              for (let i = 0; i < sample.length; i++)
+                difference += Math.abs((sample[i] ?? 0) - (previous[i] ?? 0));
+              if (difference / sample.length > 0.02) changed = true;
+            }
+            previous = sample;
           }
           if (runtimeErrors.length) throw new Error(runtimeErrors.join("; "));
+          if (!changed)
+            throw new Error(
+              "Scene contains no measurable visual change; demonstrate the explained mechanism",
+            );
+          checkedSamples += times.length;
+          changingScenes++;
           code = compiled;
           break;
         } catch (cause) {
           if (signal.aborted) throw cause;
           error = cause instanceof Error ? cause.message : String(cause);
           options.log?.(`Repairing scene ${beat.id}: ${error.slice(0, 300)}`);
+          if (attempt === 0) {
+            await browser.close().catch(() => {});
+            ({ browser, page } = await execution());
+          }
         }
       if (!code)
         throw new Error(
@@ -418,7 +473,7 @@ export async function renderVideo(
               Math.max(time - scene.beat.start, 0),
               scene.beat.end - scene.beat.start,
             ),
-            captionGroup(track.words, time),
+            captionAt(phrases, time),
             time,
           );
           buffer = await page.screenshot({ type: "png", animations: "allow" });
@@ -457,7 +512,7 @@ export async function renderVideo(
         "-i",
         resolve(config.root, "assets/Bgm.m4a"),
         "-filter_complex",
-        `[1:a]adelay=${intro}|${intro},apad,asplit=2[voice][side];[2:a]volume=0.2[music];[music][side]sidechaincompress=threshold=0.015:ratio=8:attack=10:release=300[ducked];[voice][ducked]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.89[mix]`,
+        `[1:a]adelay=${intro}|${intro},apad,asplit=2[voice][side];[2:a]volume=0.2,afade=t=in:st=0:d=0.35,afade=t=out:st=${Math.max(0, total - 0.6)}:d=0.6[music];[music][side]sidechaincompress=threshold=0.015:ratio=8:attack=10:release=300[ducked];[voice][ducked]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.89[mix]`,
         "-map",
         "0:v",
         "-map",
@@ -475,6 +530,10 @@ export async function renderVideo(
         output,
       ],
       signal,
+    );
+    const mix = await measureMix(output, signal);
+    options.log?.(
+      `Quality checks: ${checkedSamples} sampled states; ${changingScenes} changing scenes; mix ${JSON.stringify(mix)}`,
     );
     const metadata = await probe(output, signal);
     const video = metadata.streams.find(
@@ -497,7 +556,10 @@ export async function renderVideo(
       width: 1080,
       height: 1920,
       fps: 60,
-      grade: 100,
+      grade: Math.round(
+        (100 * changingScenes) / Math.max(1, track.beats.length),
+      ),
+      checks: { sampledStates: checkedSamples, changingScenes, ...mix },
     };
   } finally {
     signal.removeEventListener("abort", abort);

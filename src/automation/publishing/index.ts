@@ -2,16 +2,18 @@ import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
 import { z } from "zod";
 import type { Config } from "../operations/config.js";
-import { Http } from "../operations/http.js";
+import { Http, HttpError } from "../operations/http.js";
 import type {
   ContentPlan,
   Platform,
   Publication,
+  PublicationJournal,
   RenderedVideo,
   Workspace,
 } from "../domain.js";
 import { message } from "../domain.js";
 const idSchema = z.object({ id: z.string().min(1) });
+class PersistenceError extends Error {}
 class PublicationError extends Error {
   constructor(
     detail: string,
@@ -31,6 +33,40 @@ export function publicationFailure(
 /** One submission per platform. Verification reads may poll; no submission is blindly repeated. */
 export class Publisher {
   private staging: string | undefined;
+  private journal: PublicationJournal = { staging: null, operations: [] };
+  private persist: (journal: PublicationJournal) => Promise<void> =
+    async () => {};
+  private async checkpoint() {
+    if (this.journal.staging)
+      this.journal.staging.consumers = [...this.pendingConsumers];
+    try {
+      await this.persist(structuredClone(this.journal));
+    } catch (error) {
+      throw new PersistenceError(
+        `Publication journal could not be saved: ${message(error)}`,
+      );
+    }
+  }
+  private async intent(
+    platform: Platform,
+    phase: "upload" | "container" | "publish",
+  ) {
+    this.journal.operations.push({ platform, phase, state: "Intent" });
+    await this.checkpoint();
+  }
+  private async accepted(
+    platform: Platform,
+    phase: "upload" | "container" | "publish",
+    id: string,
+  ) {
+    const operation = [...this.journal.operations]
+      .reverse()
+      .find((item) => item.platform === platform && item.phase === phase);
+    if (!operation) throw new Error("Missing persisted publication intent");
+    operation.state = "Accepted";
+    operation.id = id;
+    await this.checkpoint();
+  }
   private readonly pendingConsumers = new Set<Platform>();
   constructor(
     private readonly config: Config,
@@ -48,6 +84,8 @@ export class Publisher {
   private async stage(video: RenderedVideo, workspace: Workspace) {
     const key = `${basename(workspace.path)}/final.mp4`;
     this.staging = key;
+    this.journal.staging = { key, state: "Planned", consumers: [] };
+    await this.checkpoint();
     const bytes = await readFile(video.path);
     await this.http.response(
       `${this.config.SUPABASE_URL}/storage/v1/object/${this.config.SUPABASE_BUCKET}/${key}`,
@@ -63,6 +101,8 @@ export class Publisher {
         timeout: 180000,
       },
     );
+    this.journal.staging.state = "Ready";
+    await this.checkpoint();
     return `${this.config.SUPABASE_URL}/storage/v1/object/public/${this.config.SUPABASE_BUCKET}/${key}`;
   }
   async publish(
@@ -70,12 +110,15 @@ export class Publisher {
     plan: ContentPlan,
     workspace: Workspace,
     record: (result: Publication) => Promise<void>,
+    journal: (snapshot: PublicationJournal) => Promise<void> = async () => {},
   ) {
+    this.persist = journal;
     let staging: string | undefined;
     let stagingError = "";
     try {
       staging = await this.stage(video, workspace);
     } catch (error) {
+      if (error instanceof PersistenceError) throw error;
       stagingError = message(error);
     }
     let persistenceError: unknown;
@@ -96,6 +139,7 @@ export class Publisher {
               ? await this.instagram(staging, plan, record)
               : await this.facebook(staging, plan, record);
       } catch (error) {
+        if (error instanceof PersistenceError) throw error;
         result = publicationFailure(platform, error);
       }
       // When result persistence fails do not start another remote side effect. Otherwise finish all targets.
@@ -150,6 +194,7 @@ export class Publisher {
       if (!location || new URL(location).hostname !== "www.googleapis.com")
         throw new Error("Invalid YouTube upload session URL");
       const bytes = await readFile(video.path);
+      await this.intent("youtube", "upload");
       submitted = true;
       const upload = await this.http.json(location, idSchema, {
         method: "PUT",
@@ -158,6 +203,7 @@ export class Publisher {
         timeout: 180000,
       });
       id = upload.id;
+      await this.accepted("youtube", "upload", id);
       const url = `https://www.youtube.com/watch?v=${encodeURIComponent(id)}`;
       await record({
         platform: "youtube",
@@ -210,7 +256,11 @@ export class Publisher {
       );
       return { platform: "youtube", state: "Published", id: verified.id, url };
     } catch (error) {
-      if (error instanceof PublicationError) throw error;
+      if (
+        error instanceof PublicationError ||
+        error instanceof PersistenceError
+      )
+        throw error;
       throw new PublicationError(message(error), {
         platform: "youtube",
         state: submitted ? "Unknown" : "Failed",
@@ -230,6 +280,7 @@ export class Publisher {
     let submitted = false;
     try {
       this.pendingConsumers.add("instagram");
+      await this.intent("instagram", "container");
       submitted = true;
       const created = await this.http.json(
         `${this.graph}/${this.config.INSTAGRAM_ACCOUNT_ID}/media`,
@@ -246,6 +297,7 @@ export class Publisher {
         },
       );
       container = created.id;
+      await this.accepted("instagram", "container", container);
       await record({
         platform: "instagram",
         state: "Unknown",
@@ -261,6 +313,7 @@ export class Publisher {
           );
           if (["ERROR", "EXPIRED"].includes(status.status_code)) {
             this.pendingConsumers.delete("instagram");
+            await this.checkpoint();
             throw new PublicationError("Instagram media processing failed", {
               platform: "instagram",
               state: "Failed",
@@ -273,6 +326,7 @@ export class Publisher {
             status.status_code === "PUBLISHED"
           ) {
             this.pendingConsumers.delete("instagram");
+            await this.checkpoint();
             return status;
           }
           return undefined;
@@ -280,6 +334,7 @@ export class Publisher {
         5000,
         120,
       );
+      await this.intent("instagram", "publish");
       const result = await this.http.json(
         `${this.graph}/${this.config.INSTAGRAM_ACCOUNT_ID}/media_publish`,
         idSchema,
@@ -290,6 +345,7 @@ export class Publisher {
         },
       );
       published = result.id;
+      await this.accepted("instagram", "publish", published);
       await record({
         platform: "instagram",
         state: "Unknown",
@@ -321,10 +377,22 @@ export class Publisher {
         url: item.permalink,
       };
     } catch (error) {
-      if (error instanceof PublicationError) throw error;
+      if (
+        error instanceof PublicationError ||
+        error instanceof PersistenceError
+      )
+        throw error;
+      const rejected =
+        !container &&
+        error instanceof HttpError &&
+        [400, 401, 403, 404, 413, 422, 429].includes(error.status);
+      if (rejected) {
+        this.pendingConsumers.delete("instagram");
+        await this.checkpoint();
+      }
       throw new PublicationError(message(error), {
         platform: "instagram",
-        state: submitted ? "Unknown" : "Failed",
+        state: submitted && !rejected ? "Unknown" : "Failed",
         detail: message(error),
         ...((published ?? container)
           ? { id: published ?? container ?? "" }
@@ -347,6 +415,7 @@ export class Publisher {
     let submitted = false;
     try {
       this.pendingConsumers.add("facebook");
+      await this.intent("facebook", "upload");
       submitted = true;
       const result = await this.http.json(
         `${this.graph}/${this.config.FACEBOOK_PAGE_ID}/videos`,
@@ -358,6 +427,7 @@ export class Publisher {
         },
       );
       id = result.id;
+      await this.accepted("facebook", "upload", id);
       await record({
         platform: "facebook",
         state: "Unknown",
@@ -380,6 +450,7 @@ export class Publisher {
           );
           if (["error", "failed"].includes(item.status.video_status)) {
             this.pendingConsumers.delete("facebook");
+            await this.checkpoint();
             throw new PublicationError("Facebook processing failed", {
               platform: "facebook",
               state: "Failed",
@@ -389,6 +460,7 @@ export class Publisher {
           }
           if (item.status.video_status === "ready") {
             this.pendingConsumers.delete("facebook");
+            await this.checkpoint();
             return item.permalink_url ? item : undefined;
           }
           return undefined;
@@ -412,10 +484,22 @@ export class Publisher {
         url: permalink,
       };
     } catch (error) {
-      if (error instanceof PublicationError) throw error;
+      if (
+        error instanceof PublicationError ||
+        error instanceof PersistenceError
+      )
+        throw error;
+      const rejected =
+        !id &&
+        error instanceof HttpError &&
+        [400, 401, 403, 404, 413, 422, 429].includes(error.status);
+      if (rejected) {
+        this.pendingConsumers.delete("facebook");
+        await this.checkpoint();
+      }
       throw new PublicationError(message(error), {
         platform: "facebook",
-        state: submitted ? "Unknown" : "Failed",
+        state: submitted && !rejected ? "Unknown" : "Failed",
         detail: message(error),
         ...(id ? { id } : {}),
       });
@@ -438,6 +522,8 @@ export class Publisher {
         body: JSON.stringify({ prefixes: [this.staging] }),
       },
     );
+    if (this.journal.staging) this.journal.staging.state = "Deleted";
+    await this.checkpoint();
     this.staging = undefined;
     return ["Supabase staging removed; existing social publications preserved"];
   }

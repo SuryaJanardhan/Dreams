@@ -129,3 +129,7 @@ This proposal adds planning and better checks inside the same pipeline. It does 
 **Good enough to run a controlled first end-to-end Actions verification: yes. Proven best for unattended production and lively educational reels: no.**
 
 My final position is to retain the architecture and focus the next changes on dependable reporting plus a coordinated visual story. Preserve original AI-written animation, the current voice and actual speech timing. Improve explanatory motion and phrase pacing before buying complexity through a different renderer, more providers or another redesign. Let the real Actions run settle performance questions; use our agreed decisions to settle product changes.
+
+## Implementation follow-through
+
+The subsequent quality update implements the cheap eligibility gate, typed finalization, durable publishing/staging journal, Sheet error classification, expanded generated-code isolation/repair, shared visual direction, phrase captions, audio-level checks/fades, and stage/resource measurements. See IMPLEMENTATION.md for exact behavior and remaining limits. The assessment above describes the pre-update baseline; its warnings about unverified full-length synthesis, audience quality and CPU feasibility still require the production run. Legacy removal and fully pinned ML dependencies are intentionally deferred until that evidence and caller review exist.

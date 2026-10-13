@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { resolve } from "node:path";
 import type { Config } from "../operations/config.js";
 import type { ContentPlan, Narration, Workspace } from "../domain.js";
@@ -8,7 +9,7 @@ export function createVoice(config: Config, signal: () => AbortSignal) {
     twice(async () => {
       const raw = workspace.file("narration-raw.wav");
       const path = workspace.file("narration.wav");
-      await command(
+      const engineOutput = await command(
         config.PYTHON_EXECUTABLE,
         [
           resolve(config.root, "voicebox/synthesize.py"),
@@ -25,6 +26,9 @@ export function createVoice(config: Config, signal: () => AbortSignal) {
         ],
         signal(),
       );
+      const engineMetrics = z
+        .object({ peakRssMb: z.number().positive() })
+        .parse(JSON.parse(engineOutput.trim().split("\n").at(-1) ?? "{}"));
       let info = await assertAudio(raw, signal());
       if (info.duration < 55 || info.duration > 65) {
         const ratio = info.duration / 60;
@@ -66,6 +70,6 @@ export function createVoice(config: Config, signal: () => AbortSignal) {
         throw new Error(
           `Narration duration outside 55–65s after pacing: ${info.duration}`,
         );
-      return { path, ...info };
+      return { path, ...info, peakRssMb: engineMetrics.peakRssMb };
     });
 }

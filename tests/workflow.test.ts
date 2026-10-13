@@ -191,3 +191,32 @@ test("stale processing is interrupted and reported without resuming any stage", 
   assert.ok(events.includes("email"));
   assert.ok(!events.includes("youtube"));
 });
+
+test("a lost final Sheet write cannot report operational success even when posts succeeded", async () => {
+  const { deps } = fixture();
+  deps.publish = async (_v, _p, _w, record) => {
+    for (const platform of ["youtube", "instagram", "facebook"] as const)
+      await record({
+        platform,
+        state: "Published",
+        id: platform,
+        url: `https://example.org/${platform}`,
+      });
+  };
+  const originalSave = deps.save;
+  deps.save = async (p) => {
+    if (p.status === "Completed") throw new Error("Sheet unavailable");
+    await originalSave(p);
+  };
+  const result = await runWorkflow(deps);
+  assert.ok("progress" in result);
+  if (!("progress" in result)) throw new Error("Missing progress");
+  assert.equal(result.state, "Completed");
+  assert.equal(result.operationalSuccess, false);
+  assert.equal(result.progress.finalization?.persistence, "failed");
+  assert.equal(result.progress.finalization?.pause, "saved");
+  assert.equal(
+    result.progress.publications.filter((p) => p.state === "Published").length,
+    3,
+  );
+});

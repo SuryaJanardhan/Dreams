@@ -6,6 +6,8 @@ import type {
   Outcome,
   Progress,
   Publication,
+  PublicationJournal,
+  Finalization,
   RenderedVideo,
   Task,
   Workspace,
@@ -36,6 +38,7 @@ export interface WorkflowDependencies {
     plan: ContentPlan,
     workspace: Workspace,
     record: (result: Publication) => Promise<void>,
+    journal: (snapshot: PublicationJournal) => Promise<void>,
   ): Promise<void>;
   cleanupStaging(): Promise<string[]>;
   notify(progress: Progress): Promise<void>;
@@ -84,6 +87,8 @@ export async function runWorkflow(
         remarks: "",
         cleanup: [],
         grades: {},
+        metrics: {},
+        journal: { staging: null, operations: [] },
       };
       await save();
       workspace = await deps.workspace(progress.jobId);
@@ -96,7 +101,14 @@ export async function runWorkflow(
         check();
         job.stage = stage;
         await save();
+        const started = performance.now();
         const result = await operation();
+        if (!job.metrics) job.metrics = {};
+        job.metrics["orchestrator.peakRssMb"] = Math.round(
+          process.resourceUsage().maxRSS / 1024,
+        );
+        job.metrics[`${stage}.seconds`] =
+          Math.round((performance.now() - started) / 10) / 100;
         check();
         job.lastCompleted = stage;
         await save();
@@ -105,6 +117,11 @@ export async function runWorkflow(
       const plan = await step("content", () => deps.content(intake.task));
       progress.grades.content = plan.grade;
       const narration = await step("voice", () => deps.voice(plan, work));
+      if (narration.peakRssMb)
+        progress.metrics = {
+          ...progress.metrics,
+          "voice.peakRssMb": narration.peakRssMb,
+        };
       const captions = await step("captions", () =>
         deps.captions(plan, narration),
       );
@@ -112,14 +129,25 @@ export async function runWorkflow(
         deps.render(plan, narration, captions, work),
       );
       progress.grades.rendering = video.grade;
+      if (video.checks)
+        progress.metrics = { ...progress.metrics, ...video.checks };
       await step("publishing", () =>
-        deps.publish(video, plan, work, async (result) => {
-          if (!progress) throw new Error("Missing job progress");
-          progress.publications = progress.publications.map((previous) =>
-            previous.platform === result.platform ? result : previous,
-          );
-          await save();
-        }),
+        deps.publish(
+          video,
+          plan,
+          work,
+          async (result) => {
+            if (!progress) throw new Error("Missing job progress");
+            progress.publications = progress.publications.map((previous) =>
+              previous.platform === result.platform ? result : previous,
+            );
+            await save();
+          },
+          async (snapshot) => {
+            job.journal = structuredClone(snapshot);
+            await save();
+          },
+        ),
       );
       const complete = progress.publications.every(
         (result) => result.state === "Published",
@@ -150,6 +178,13 @@ export async function runWorkflow(
   }
   if (!progress) throw new Error("Workflow ended without a result");
   // Cleanup is a separate finalization phase; preserve the stage that failed for the incident report.
+  const finalization: Finalization = {
+    cleanup: "passed",
+    persistence: "passed",
+    pause: "not-required",
+    notification: "pending",
+  };
+  progress.finalization = finalization;
   const finalizationErrors: string[] = [];
   for (const [label, cleanup] of [
     ["staging", () => deps.cleanupStaging()],
@@ -164,6 +199,7 @@ export async function runWorkflow(
     try {
       progress.cleanup.push(...(await cleanup()));
     } catch (error) {
+      finalization.cleanup = "failed";
       finalizationErrors.push(`${label} cleanup failed: ${message(error)}`);
     }
   }
@@ -174,23 +210,53 @@ export async function runWorkflow(
   if (pause) {
     try {
       await deps.pause(progress.remarks);
+      finalization.pause = "saved";
     } catch (error) {
+      finalization.pause = "failed";
       progress.remarks += ` Could not persist PAUSED: ${message(error)}`;
     }
   }
   try {
     await save();
   } catch (error) {
+    finalization.persistence = "failed";
     progress.remarks += ` Final Sheet update failed: ${message(error)}`;
-    await deps.pause(progress.remarks).catch(() => {});
+    try {
+      await deps.pause(progress.remarks);
+      finalization.pause = "saved";
+    } catch {
+      finalization.pause = "failed";
+    }
   }
   let notification = "sent";
   try {
     await deps.notify(progress);
+    finalization.notification = "sent";
   } catch (error) {
+    finalization.notification = "failed";
     notification = `failed: ${message(error)}`;
     progress.remarks += ` Notification ${notification}`;
-    await save().catch(() => {});
   }
-  return { state: progress.status, progress, notification };
+  try {
+    await save();
+  } catch (error) {
+    finalization.persistence = "failed";
+    progress.remarks += ` Notification-result Sheet update failed: ${message(error)}`;
+    try {
+      await deps.pause(progress.remarks);
+      finalization.pause = "saved";
+    } catch {
+      finalization.pause = "failed";
+    }
+  }
+  return {
+    state: progress.status,
+    progress,
+    notification,
+    operationalSuccess:
+      progress.status === "Completed" &&
+      finalization.cleanup === "passed" &&
+      finalization.persistence === "passed" &&
+      finalization.pause !== "failed",
+  };
 }

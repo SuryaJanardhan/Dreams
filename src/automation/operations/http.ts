@@ -5,6 +5,15 @@ export type Request = {
   body?: BodyInit;
   timeout?: number;
 };
+export class HttpError extends Error {
+  constructor(
+    readonly status: number,
+    host: string,
+    detail: string,
+  ) {
+    super(`Provider HTTP ${status} (${host}): ${detail}`);
+  }
+}
 export class Http {
   constructor(private readonly signal: () => AbortSignal) {}
   async response(url: string, request: Request = {}): Promise<Response> {
@@ -13,10 +22,35 @@ export class Http {
       ...request,
       signal: AbortSignal.any([this.signal(), timeout]),
     });
-    if (!response.ok)
-      throw new Error(
-        `Provider request failed with HTTP ${response.status} (${new URL(url).hostname})`,
+    if (!response.ok) {
+      let detail = "Request rejected";
+      try {
+        const body: unknown = await response.json();
+        const parsed = z
+          .object({
+            error: z.union([
+              z.string(),
+              z.object({
+                message: z.string().optional(),
+                error_user_msg: z.string().optional(),
+              }),
+            ]),
+          })
+          .safeParse(body);
+        if (parsed.success)
+          detail =
+            typeof parsed.data.error === "string"
+              ? parsed.data.error
+              : (parsed.data.error.error_user_msg ??
+                parsed.data.error.message ??
+                detail);
+      } catch {}
+      throw new HttpError(
+        response.status,
+        new URL(url).hostname,
+        detail.slice(0, 1000),
       );
+    }
     return response;
   }
   async json<T>(

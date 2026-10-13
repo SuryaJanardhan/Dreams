@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { loadConfig, redact } from "./operations/config.js";
+import { loadSheetsConfig, redact } from "./operations/config.js";
 import { Http } from "./operations/http.js";
 import { createNotifier } from "./operations/email.js";
 import { Sheets } from "./sheets/index.js";
@@ -10,8 +10,11 @@ async function reportSetupFailure() {
     "Actions dependency/setup validation failed before production started. Inspect the failed step in the Actions run.";
   let secrets: string[] = [];
   try {
-    const config = loadConfig();
-    secrets = config.secrets;
+    const config = loadSheetsConfig();
+    secrets = [
+      config.credentials.private_key,
+      process.env.EMAIL_APP_PASSWORD ?? "",
+    ];
     const sheets = new Sheets(
       config,
       new Http(() => AbortSignal.timeout(60000)),

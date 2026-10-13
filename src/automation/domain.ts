@@ -33,8 +33,10 @@ export interface ContentPlan {
   beats: Beat[];
   caption: string;
   grade: number;
+  direction?: VisualDirection;
 }
 export interface Narration {
+  peakRssMb?: number;
   path: string;
   duration: number;
   sampleRate: number;
@@ -54,6 +56,13 @@ export interface CaptionTrack {
   duration: number;
 }
 export interface RenderedVideo {
+  checks?: {
+    sampledStates: number;
+    changingScenes: number;
+    integratedLufs: number;
+    truePeakDb: number;
+    loudnessRange: number;
+  };
   path: string;
   duration: number;
   width: number;
@@ -70,6 +79,31 @@ export type Publication =
       id?: string;
       url?: string;
     };
+export interface PublicationJournal {
+  staging: {
+    key: string;
+    state: "Planned" | "Ready" | "Deleted";
+    consumers: Platform[];
+  } | null;
+  operations: {
+    platform: Platform;
+    phase: "upload" | "container" | "publish";
+    state: "Intent" | "Accepted";
+    id?: string;
+  }[];
+}
+export interface Finalization {
+  cleanup: "passed" | "failed";
+  persistence: "passed" | "failed";
+  pause: "not-required" | "saved" | "failed";
+  notification: "pending" | "sent" | "failed";
+}
+export interface VisualDirection {
+  example: string;
+  payoff: string;
+  objects: { id: string; label: string; role: string; color: string }[];
+  rules: string;
+}
 export interface Progress {
   jobId: string;
   task: Task;
@@ -82,6 +116,9 @@ export interface Progress {
   remarks: string;
   cleanup: string[];
   grades: Record<string, number>;
+  metrics?: Record<string, number>;
+  journal?: PublicationJournal;
+  finalization?: Finalization;
 }
 export type Outcome =
   | { state: "NoWork" | "Paused"; detail: string }
@@ -89,6 +126,7 @@ export type Outcome =
       state: "Completed" | "Failed" | "Partial" | "Cancelled" | "Interrupted";
       progress: Progress;
       notification: string;
+      operationalSuccess: boolean;
     };
 export interface Workspace {
   path: string;
