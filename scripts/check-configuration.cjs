@@ -37,6 +37,26 @@ async function main(){
    report.sheet={readable:true,row6:{status:cell(['status']),hasTaskId:Boolean(cell(['task id','taskid'])),hasJobId:Boolean(cell(['job id'])),progressJsonReadable:Boolean(progress&&typeof progress==='object'),savedLastCompleted:typeof progress?.lastCompleted==='string'?progress.lastCompleted:null,links:{youtube:Boolean(cell(['yt link','youtube link','links'])),instagram:Boolean(cell(['insta link','instagram link'])),facebook:Boolean(cell(['fb link','facebook link']))}},paused:String(control[0]?.[1]??'').toUpperCase()};
   }catch(error){report.sheet={readable:false,errorCode:error.code??null};}
  }
+ // Authentication/read checks only; never generate content, create uploads or publish.
+ async function read(url,headers){
+  try{const response=await fetch(url,{headers,signal:AbortSignal.timeout(20000)});const value=await response.json().catch(()=>({}));return {status:response.status,ok:response.ok,value};}
+  catch{return {status:null,ok:false,value:{}};}
+ }
+ try{
+  const response=await fetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({client_id:process.env.GOOGLE_CLIENT_ID??'',client_secret:process.env.GOOGLE_CLIENT_SECRET??'',refresh_token:process.env.YOUTUBE_REFRESH_TOKEN??'',grant_type:'refresh_token'}),signal:AbortSignal.timeout(20000)});
+  const token=await response.json();
+  report.youtube={refreshAccepted:response.ok,error:response.ok?null:['invalid_grant','invalid_client','unauthorized_client','invalid_request'].includes(token.error)?token.error:'OAuth request failed'};
+  if(response.ok&&token.access_token){const channel=await read('https://www.googleapis.com/youtube/v3/channels?part=id&mine=true',{Authorization:'Bearer '+token.access_token});report.youtube.channelReadStatus=channel.status;report.youtube.channelAvailable=Boolean(channel.value.items?.length);report.youtube.scopes=typeof token.scope==='string'?token.scope.split(' '):[];}
+ }catch{report.youtube={refreshAccepted:false,error:'OAuth connection failure'};}
+ const scriptModel=process.env.GEMINI_SCRIPT_MODEL||'gemini-2.5-flash',visualModel=process.env.GEMINI_VISUAL_MODEL||'gemini-2.5-pro';
+ const scriptModelRead=await read('https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(scriptModel),{'x-goog-api-key':process.env.GEMINI_API_KEY??''});
+ const visualModelRead=await read('https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(visualModel),{'x-goog-api-key':process.env.GEMINI_API_KEY_FOR_VISUALS??''});
+ const assembly=await read('https://api.assemblyai.com/v2/transcript?limit=1',{authorization:process.env.ASSEMBLYAI_API_KEY??''});
+ const storage=await read((process.env.SUPABASE_URL??'').replace(/\/$/,'')+'/storage/v1/bucket/'+encodeURIComponent(process.env.SUPABASE_BUCKET||'videos'),{Authorization:'Bearer '+(process.env.SUPABASE_SERVICE_ROLE_KEY??''),apikey:process.env.SUPABASE_SERVICE_ROLE_KEY??''});
+ const graph='https://graph.facebook.com/'+(process.env.GRAPH_API_VERSION||'v23.0');
+ const instagram=await read(graph+'/'+encodeURIComponent(process.env.INSTAGRAM_ACCOUNT_ID??'')+'?fields=id',{Authorization:'Bearer '+(process.env.INSTAGRAM_ACCESS_TOKEN??'')});
+ const facebook=await read(graph+'/'+encodeURIComponent(process.env.FACEBOOK_PAGE_ID??'')+'?fields=id,access_token',{Authorization:'Bearer '+(process.env.FACEBOOK_ACCESS_TOKEN??'')});
+ report.providerReadChecks={geminiNarration:{model:scriptModel,status:scriptModelRead.status},geminiVisuals:{model:visualModel,status:visualModelRead.status},assemblyai:{status:assembly.status},supabase:{status:storage.status,bucketPublic:storage.value.public===true},instagram:{status:instagram.status},facebook:{status:facebook.status,pageTokenAvailable:Boolean(facebook.value.access_token)}};
  const output=JSON.stringify(report,null,2);console.log(output);
  if(process.env.GITHUB_STEP_SUMMARY)await fs.appendFile(process.env.GITHUB_STEP_SUMMARY,'## Read-only configuration diagnostics\n\n```json\n'+output+'\n```\n');
 }
