@@ -69,6 +69,13 @@ async function main() {
     throw new Error(
       "Tracked JavaScript authoring remains: " + authoredJS.join(", "),
     );
+  const uncheckedTS = tracked.filter(
+    (file) => /\.tsx?$/.test(file) && !configured.has(resolve(file)),
+  );
+  if (uncheckedTS.length)
+    throw new Error(
+      "Tracked TypeScript outside compiler coverage: " + uncheckedTS.join(", "),
+    );
   for (const file of configured) {
     const content = await readFile(file, "utf8");
     if (/@ts-(?:ignore|nocheck)/.test(content))

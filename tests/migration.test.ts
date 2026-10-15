@@ -8,8 +8,33 @@ import { runInNewContext } from "node:vm";
 import { execFileSync } from "node:child_process";
 import ts from "typescript";
 import { failureInfo } from "../src/compat/errors.js";
+import { parseGoogleCredentials } from "../src/compat/credentials.js";
 import { present, truthy } from "../src/compat/guards.js";
 import { generateCompatibility } from "../scripts/generate-compat.js";
+
+test("Google credential validation retains SDK fields and rejects malformed consumed fields", () => {
+  const serviceAccount = {
+    client_email: "offline@example.invalid",
+    private_key: "fixture",
+    type: "service_account",
+    token_uri: "https://oauth.example.invalid/token",
+  };
+  assert.deepEqual(
+    parseGoogleCredentials(JSON.stringify(serviceAccount)),
+    serviceAccount,
+  );
+  assert.deepEqual(
+    parseGoogleCredentials(
+      '{"client_id":"fixture","redirect_uris":["http://localhost"]}',
+    ),
+    { client_id: "fixture", redirect_uris: ["http://localhost"] },
+  );
+  assert.deepEqual(parseGoogleCredentials("{}"), {});
+  assert.throws(() => parseGoogleCredentials('{"client_id":42}'));
+  assert.throws(() =>
+    parseGoogleCredentials('{"redirect_uris":"http://localhost"}'),
+  );
+});
 function stable(value: unknown): unknown {
   if (value instanceof Error) return { message: value.message };
   if (Array.isArray(value)) return Array.from(value, stable);

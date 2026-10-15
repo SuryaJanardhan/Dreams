@@ -152,7 +152,7 @@ async function generateScriptWithGroq(prompt: string, originalError: unknown) {
   }
 
   try {
-    const Groq = require("groq-sdk");
+    const Groq: typeof import("groq-sdk").default = require("groq-sdk");
     const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
     const chatCompletion = await groq.chat.completions.create({
       messages: [
@@ -165,8 +165,11 @@ async function generateScriptWithGroq(prompt: string, originalError: unknown) {
     });
 
     logger.info("✨ Script generated via Groq fallback");
+    const content = chatCompletion.choices[0]?.message.content;
+    if (typeof content !== "string")
+      throw new Error("Groq returned no script text");
     return {
-      text: chatCompletion.choices[0].message.content.trim(),
+      text: content.trim(),
       provider: "groq",
       model: GROQ_SCRIPT_MODEL_ID,
     };

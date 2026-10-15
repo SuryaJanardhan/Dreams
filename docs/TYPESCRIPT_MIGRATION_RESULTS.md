@@ -4,7 +4,7 @@
 
 All 111 first-party JavaScript files in the migration inventory now have TypeScript implementations: 41 legacy application files, 55 CLI tools, nine harnesses and six archived files. The already-typed automation remains the production entry point. The composer now passes strict checking as well as its Vite build.
 
-Three compiler configurations cover 172 TypeScript inputs with `strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes` and unknown catch variables. No authored explicit `any`, blanket type suppressions or tracked first-party JavaScript remain in these source roots. This does not imply that every third-party SDK return type is fully checked; provider integration still needs live validation.
+Three compiler configurations cover 173 TypeScript inputs with `strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes` and unknown catch variables. No authored explicit `any`, blanket type suppressions or tracked first-party JavaScript remain in these source roots. This does not imply that every third-party SDK return type is fully checked; provider integration still needs live validation.
 
 Root CommonJS and composer ESM semantics remain separate. `npm ci` generates 111 ignored `.js` launchers from the checked manifest. They register the runtime `tsx` loader and load the corresponding source `.ts` file, preserving exported singleton identity, old command paths, and source-relative asset paths. Run `npm run compat` to regenerate them. Do not deploy `dist-legacy` as a replacement runtime without separately validating asset relocation.
 
@@ -20,9 +20,9 @@ Completed locally with Node 24 (project requires Node 22+), FFmpeg and Playwrigh
 | --- | --- |
 | Fresh root and composer `npm ci` | Pass; root postinstall generates all 111 launchers |
 | Root and composer dependency audits | Zero reported vulnerabilities at verification time |
-| `npm run check:migration` | 111 conversions; 172 compiler-covered TS inputs; zero tracked source JS or blanket suppressions |
+| `npm run check:migration` | 111 conversions; 173 compiler-covered TS inputs; zero tracked source JS or blanket suppressions |
 | `npm run typecheck` | Production, legacy/tools/archive and composer pass |
-| `npm test` | 32 passed; zero failures/skips |
+| `npm test` | 33 passed; zero failures/skips |
 | `npm run build` | Both Node compiler builds and composer Vite build pass |
 | `npm run syntax` | Checks every emitted Node/composer JavaScript file without executing tools |
 | `npm run smoke` | Legacy HTTP startup/health/status/validation/404; composer upload, manual entry, playback, HTML/layout changes and export capability dialog; Puppeteer screenshot |
@@ -47,6 +47,18 @@ Twice-daily GitHub Actions execution checks the Sheet control state and selects 
 
 ## Review record
 
-Review compares the feature branch with `f4886b4`, using the migration plan and user requirement to preserve behavior, test and merge. Standards and specification findings are recorded separately after review. The optional engineering issue-tracker configuration is absent; `/setup-matt-pocock-skills` can configure it for future issue-based reviews without affecting this migration.
+Review compares the feature branch with `f4886b4`, using the migration plan and user requirement to preserve behavior, test and merge.
+
+### Standards
+
+Two locally controllable gaps were found: a lazy Groq import bypassed SDK types, and parsed credential JSON bypassed validation. Both are corrected, including the equivalent caption/archive imports and shared Google configuration parsing. SDK choices/content are checked, and credential parsing retains other SDK fields while validating consumed fields. A duplicated weekday sequence was also consolidated. Follow-up review found no introduced regression for supported inputs; malformed credential fields fail explicitly.
+
+### Spec
+
+No findings. The migration matches the documented scope: all 111 inventoried JS implementations become checked TypeScript, compatibility launchers retain source-relative paths and CommonJS export behavior, and scheduled automation remains unchanged. Composer changes preserve existing model selection, layout and recording intent while tightening types and external-response validation. Historical failures and untested live integrations are explicitly disclosed.
+
+Final review: zero unresolved standards findings; zero specification findings.
+
+ The optional engineering issue-tracker configuration is absent; `/setup-matt-pocock-skills` can configure it for future issue-based reviews without affecting this migration.
 
 Rollback is a Git revert of the migration merge. It must not clear Sheet state, delete published posts or automatically retry a partially published job.

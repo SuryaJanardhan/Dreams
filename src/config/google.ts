@@ -1,4 +1,6 @@
 import { failureInfo } from "../compat/errors.js";
+import { parseGoogleCredentials } from "../compat/credentials.js";
+import { present } from "../compat/guards.js";
 import { google } from "googleapis";
 import path = require("path");
 import fs = require("fs");
@@ -14,7 +16,7 @@ const getSheetsClient = async () => {
   }
 
   try {
-    credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+    credentials = parseGoogleCredentials(process.env.GOOGLE_CREDENTIALS);
   } catch (error) {
     const caughtDetails0 = failureInfo(error);
 
@@ -39,7 +41,7 @@ const getYouTubeClient = async () => {
 
   let credentials;
   try {
-    credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+    credentials = parseGoogleCredentials(process.env.GOOGLE_CREDENTIALS);
   } catch (e) {
     const caughtDetails1 = failureInfo(e);
 
@@ -82,7 +84,7 @@ const getYouTubeClientServiceAccount = async () => {
 
   let credentials;
   try {
-    credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+    credentials = parseGoogleCredentials(process.env.GOOGLE_CREDENTIALS);
   } catch (e) {
     const caughtDetails2 = failureInfo(e);
 
@@ -102,14 +104,16 @@ const getYouTubeClientServiceAccount = async () => {
     const oauth2Client = new google.auth.OAuth2(
       credentials.client_id,
       credentials.client_secret,
-      credentials.redirect_uris[0],
+      present(credentials.redirect_uris, "OAuth redirect URIs")[0],
     );
 
     // Check if we have tokens
     if (credentials.access_token) {
       oauth2Client.setCredentials({
         access_token: credentials.access_token,
-        refresh_token: credentials.refresh_token,
+        ...(credentials.refresh_token === undefined
+          ? {}
+          : { refresh_token: credentials.refresh_token }),
       });
     }
 
@@ -122,7 +126,9 @@ const getYouTubeClientServiceAccount = async () => {
 // Google Drive API setup
 const getGoogleDriveClient = async () => {
   try {
-    const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS || "{}");
+    const credentials = parseGoogleCredentials(
+      process.env.GOOGLE_CREDENTIALS || "{}",
+    );
     if (!credentials || !credentials.client_email) {
       // Fallback to service account file
       const serviceAccountPath = path.join(
@@ -154,7 +160,9 @@ const getGoogleDriveClient = async () => {
 // Google Drive API setup for uploads
 const getGoogleDriveUploadClient = async () => {
   try {
-    const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS || "{}");
+    const credentials = parseGoogleCredentials(
+      process.env.GOOGLE_CREDENTIALS || "{}",
+    );
     if (!credentials || !credentials.client_email) {
       // Fallback to service account file
       const serviceAccountPath = path.join(

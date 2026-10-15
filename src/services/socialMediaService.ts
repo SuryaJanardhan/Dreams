@@ -1,4 +1,5 @@
 import { truthy } from "../compat/guards.js";
+import { parseGoogleCredentials } from "../compat/credentials.js";
 import { present } from "../compat/guards.js";
 import type { LegacyPostResult } from "../compat/contracts.js";
 import { failureInfo, providerMessage } from "../compat/errors.js";
@@ -63,7 +64,7 @@ const createYouTubeOAuthClient = async () => {
   // Fallback for users who only configured GOOGLE_CREDENTIALS JSON.
   if ((!clientId || !clientSecret) && process.env.GOOGLE_CREDENTIALS) {
     try {
-      const creds = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+      const creds = parseGoogleCredentials(process.env.GOOGLE_CREDENTIALS);
       clientId = clientId || creds.client_id;
       clientSecret = clientSecret || creds.client_secret;
     } catch (error) {
@@ -1417,7 +1418,7 @@ const generateUnifiedSocialMediaCaption = async (
 
   if (groqKey) {
     try {
-      const Groq = require("groq-sdk");
+      const Groq: typeof import("groq-sdk").default = require("groq-sdk");
       const groq = new Groq({ apiKey: groqKey });
 
       const prompt = `Topic: ${title}
@@ -1439,7 +1440,10 @@ Rules:
         model: "llama-3.3-70b-versatile",
       });
 
-      responseText = chatCompletion.choices[0].message.content.trim();
+      const content = chatCompletion.choices[0]?.message.content;
+      if (typeof content !== "string")
+        throw new Error("Groq returned no caption text");
+      responseText = content.trim();
     } catch (e) {
       const caughtDetails20 = failureInfo(e);
 
@@ -1459,16 +1463,14 @@ Rules:
     const hashtagsMatch = responseText.match(/HASHTAGS:\s*(.*)/i);
     const keywordsMatch = responseText.match(/KEYWORDS:\s*(.*)/i);
 
-    const theory = theoryMatch
-      ? theoryMatch[1].trim()
-      : "Educational content about " + title;
-    const hashtags = hashtagsMatch
-      ? hashtagsMatch[1].trim()
-      : "#education #learning #facts";
-    const rawKeywords = keywordsMatch ? keywordsMatch[1].trim() : title;
+    const theory =
+      theoryMatch?.[1]?.trim() ?? "Educational content about " + title;
+    const hashtags =
+      hashtagsMatch?.[1]?.trim() ?? "#education #learning #facts";
+    const rawKeywords = keywordsMatch?.[1]?.trim() ?? title;
     const bracketedKeywords = `[${rawKeywords
       .split(",")
-      .map((s: import("fluent-ffmpeg").FfprobeStream) => s.trim())
+      .map((s) => s.trim())
       .join(", ")}]`;
 
     // Create the unified caption

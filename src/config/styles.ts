@@ -44,36 +44,21 @@ const COLORS = {
   },
 };
 
-const getDayBasedTheme = () => {
-  const day = new Date().getDay();
-  const days = [
-    "SUNDAY",
-    "MONDAY",
-    "TUESDAY",
-    "WEDNESDAY",
-    "THURSDAY",
-    "FRIDAY",
-    "SATURDAY",
-  ] as const;
-  return COLORS[present(days[day], "Calendar day")];
-};
+const DAYS = [
+  "SUNDAY",
+  "MONDAY",
+  "TUESDAY",
+  "WEDNESDAY",
+  "THURSDAY",
+  "FRIDAY",
+  "SATURDAY",
+] as const;
 
-const getRandomTheme = () => {
-  const keys: (keyof typeof COLORS)[] = [
-    "SUNDAY",
-    "MONDAY",
-    "TUESDAY",
-    "WEDNESDAY",
-    "THURSDAY",
-    "FRIDAY",
-    "SATURDAY",
-  ];
-  const randomKey = present(
-    keys[Math.floor(Math.random() * keys.length)],
-    "Theme key",
-  );
-  return COLORS[randomKey];
-};
+const getDayBasedTheme = () =>
+  COLORS[present(DAYS[new Date().getDay()], "Calendar day")];
+
+const getRandomTheme = () =>
+  COLORS[present(DAYS[Math.floor(Math.random() * DAYS.length)], "Theme key")];
 
 export = {
   COLORS,

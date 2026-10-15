@@ -85,14 +85,15 @@ async function prepareData() {
         `;
 
         
-        const Groq = require("groq-sdk");
+        const Groq: typeof import("groq-sdk").default = require("groq-sdk");
         const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
         const completion = await groq.chat.completions.create({
             messages: [{ role: "user", content: groqPrompt }],
             model: "llama-3.3-70b-versatile",
             temperature: 0.7,
         });
-        const visualPrompt = completion.choices[0].message.content;
+        const visualPrompt = completion.choices[0]?.message.content;
+        if (typeof visualPrompt !== "string") throw new Error("Groq returned no visual prompt");
         fs.writeFileSync('visual_prompt.txt', visualPrompt);
         console.log("✅ Visual Prompt Generated");
 

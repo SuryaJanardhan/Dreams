@@ -136,7 +136,7 @@ async function main() {
     const browser = await chromium.launch({ headless: true });
     try {
       const page = await browser.newPage({
-        permissions: ['clipboard-read', 'clipboard-write'],
+        permissions: ["clipboard-read", "clipboard-write"],
         viewport: { width: 1280, height: 900 },
       });
       const errors: string[] = [];
