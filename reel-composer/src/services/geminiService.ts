@@ -1,9 +1,13 @@
+import type { GenerationConfig } from '@google/generative-ai';
+import { z } from 'zod';
+import { errorMessage } from '../utils/errorMessage';
+import type { LayoutConfigStep } from '@/types.ts';
 
-import { GoogleGenerativeAI, SchemaType as Type } from "@google/generative-ai";
-import type { Schema } from "@google/generative-ai";
-import { GeneratedContent } from "@/types.ts";
-import { constructPrompt } from "@/src/utils/promptTemplates.ts";
-import { fileToBase64, pcmToWav, extractAudioBlob } from "@/src/utils/audioHelpers.ts";
+import { GoogleGenerativeAI, SchemaType as Type } from '@google/generative-ai';
+import type { Schema } from '@google/generative-ai';
+import { GeneratedContent } from '@/types.ts';
+import { constructPrompt } from '@/src/utils/promptTemplates.ts';
+import { fileToBase64, pcmToWav, extractAudioBlob } from '@/src/utils/audioHelpers.ts';
 
 export const validateGeminiConnection = async (apiKey: string, modelName: string): Promise<boolean> => {
   if (!apiKey) return false;
@@ -11,10 +15,10 @@ export const validateGeminiConnection = async (apiKey: string, modelName: string
   try {
     const model = genAI.getGenerativeModel({ model: modelName });
     // Simple verification call
-    await model.generateContent("Test connection.");
+    await model.generateContent('Test connection.');
     return true;
   } catch (e) {
-    console.error("API Key Validation Failed:", e);
+    console.error('API Key Validation Failed:', e);
     return false;
   }
 };
@@ -30,10 +34,7 @@ const formatSRTTimestamp = (seconds: number): string => {
   return timePart;
 };
 
-export const generateSRT = async (
-  mediaFile: File | Blob,
-  apiKey: string
-): Promise<string> => {
+export const generateSRT = async (mediaFile: File | Blob, apiKey: string): Promise<string> => {
   const genAI = new GoogleGenerativeAI(apiKey);
 
   // OPTIMIZATION: If input is a video, extract the audio track first.
@@ -42,12 +43,12 @@ export const generateSRT = async (
 
   if (mediaFile.type.startsWith('video/')) {
     try {
-      console.log("Extracting audio from video for better transcription accuracy...");
-      const audioBlob = await extractAudioBlob(mediaFile as File);
+      console.log('Extracting audio from video for better transcription accuracy...');
+      const audioBlob = await extractAudioBlob(mediaFile);
       fileToProcess = audioBlob;
       mimeType = 'audio/wav';
     } catch (e) {
-      console.warn("Audio extraction failed, falling back to video processing.", e);
+      console.warn('Audio extraction failed, falling back to video processing.', e);
     }
   }
 
@@ -63,11 +64,11 @@ export const generateSRT = async (
     items: {
       type: Type.OBJECT,
       properties: {
-        start: { type: Type.NUMBER, description: "Start time in seconds (e.g. 1.5). Must be precise." },
-        end: { type: Type.NUMBER, description: "End time in seconds (e.g. 3.0). Must be precise." },
-        text: { type: Type.STRING, description: "The spoken text" }
+        start: { type: Type.NUMBER, description: 'Start time in seconds (e.g. 1.5). Must be precise.' },
+        end: { type: Type.NUMBER, description: 'End time in seconds (e.g. 3.0). Must be precise.' },
+        text: { type: Type.STRING, description: 'The spoken text' }
       },
-      required: ["start", "end", "text"]
+      required: ['start', 'end', 'text']
     }
   };
 
@@ -98,17 +99,19 @@ export const generateSRT = async (
         }
       ],
       generationConfig: {
-        responseMimeType: "application/json",
+        responseMimeType: 'application/json',
         responseSchema: subtitleSchema
       }
     });
 
     const response = await result.response;
-    const segments = JSON.parse(response.text() || "[]");
+    const segments = z
+      .array(z.object({ start: z.number(), end: z.number(), text: z.string() }))
+      .parse(JSON.parse(response.text() || '[]'));
 
     // Convert JSON segments to SRT String
-    let srtOutput = "";
-    segments.forEach((seg: any, index: number) => {
+    let srtOutput = '';
+    segments.forEach((seg, index: number) => {
       const id = index + 1;
       const startTime = formatSRTTimestamp(seg.start);
       const endTime = formatSRTTimestamp(seg.end);
@@ -118,18 +121,14 @@ export const generateSRT = async (
     });
 
     return srtOutput.trim();
-  } catch (error: any) {
-    console.error("SRT Generation Error:", error);
+  } catch (error: unknown) {
+    console.error('SRT Generation Error:', error);
     // Propagate the actual error message from the API so the UI can display "Payload too large" etc.
-    throw new Error(error.message || "Failed to auto-generate subtitles.");
+    throw new Error(errorMessage(error, '') || 'Failed to auto-generate subtitles.');
   }
 };
 
-export const generateTTS = async (
-  text: string,
-  voice: 'male' | 'female',
-  apiKey: string
-): Promise<Blob> => {
+export const generateTTS = async (text: string, voice: 'male' | 'female', apiKey: string): Promise<Blob> => {
   const genAI = new GoogleGenerativeAI(apiKey);
   // Correct model for TTS
   const modelName = 'gemini-2.0-flash-preview-tts';
@@ -140,21 +139,25 @@ export const generateTTS = async (
   const voiceName = voice === 'female' ? 'Kore' : 'Charon';
 
   try {
+    const speechConfiguration: GenerationConfig & {
+      responseModalities: string[];
+      speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: string } } };
+    } = {
+      responseModalities: ['AUDIO'],
+      speechConfig: {
+        voiceConfig: {
+          prebuiltVoiceConfig: { voiceName }
+        }
+      }
+    };
     const result = await model.generateContent({
       contents: [{ role: 'user', parts: [{ text }] }],
-      generationConfig: {
-        responseModalities: ["AUDIO"],
-        speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: { voiceName }
-          }
-        }
-      } as any
+      generationConfig: speechConfiguration
     });
 
     const response = await result.response;
     const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    if (!base64Audio) throw new Error("No audio data returned");
+    if (!base64Audio) throw new Error('No audio data returned');
 
     // Convert Base64 to Uint8Array (PCM Data)
     const binaryString = atob(base64Audio);
@@ -166,9 +169,9 @@ export const generateTTS = async (
 
     // Wrap raw PCM in WAV header so browsers can play/download it
     return pcmToWav(bytes, 24000);
-  } catch (error: any) {
-    console.error("TTS Generation Error:", error);
-    throw new Error(`Failed to generate speech: ${error.message || "Unknown error"}`);
+  } catch (error: unknown) {
+    console.error('TTS Generation Error:', error);
+    throw new Error(`Failed to generate speech: ${errorMessage(error, '') || 'Unknown error'}`);
   }
 };
 
@@ -178,11 +181,11 @@ export const generateReelContent = async (
   apiKey: string,
   modelName: string,
   existingHtml?: string,
-  existingLayout?: any,
+  existingLayout?: LayoutConfigStep[],
   isAudioOnly: boolean = false
 ): Promise<GeneratedContent> => {
   if (!apiKey) {
-    throw new Error("API Key is missing. Please enter it in the settings.");
+    throw new Error('API Key is missing. Please enter it in the settings.');
   }
 
   const genAI = new GoogleGenerativeAI(apiKey);
@@ -238,11 +241,15 @@ export const generateReelContent = async (
     - 'layoutMode': 'split', 'full-video', 'full-html'.
     - 'splitRatio': 0.5 (STRICT: USE 0.5 FOR ALL SPLIT LAYOUTS TO ENSURE PERFECT GAP BALANCE).
 
-    ${isAudioOnly ? `
+    ${
+      isAudioOnly
+        ? `
     ### AUDIO ONLY MODE
     - FORCE 'layoutMode': 'full-html' FOR ALL SCENES.
     - The visuals must be continuously active.
-    ` : ''}
+    `
+        : ''
+    }
   `;
 
   let prompt = constructPrompt(topicContext, srtText);
@@ -262,7 +269,7 @@ export const generateReelContent = async (
       ${JSON.stringify(existingLayout)}
 
       *** REFINEMENT INSTRUCTIONS ***
-      ${topicContext || "Fix syntax errors and improve smooth animation."}
+      ${topicContext || 'Fix syntax errors and improve smooth animation.'}
 
       *** TRANSCRIPT CONTEXT ***
       ${srtText}
@@ -281,7 +288,7 @@ export const generateReelContent = async (
       captionPosition: { type: Type.STRING, enum: ['top', 'bottom', 'center', 'hidden'], format: 'enum' },
       note: { type: Type.STRING }
     },
-    required: ["startTime", "endTime", "layoutMode", "splitRatio", "captionPosition"]
+    required: ['startTime', 'endTime', 'layoutMode', 'splitRatio', 'captionPosition']
   };
 
   const responseSchema: Schema = {
@@ -291,14 +298,14 @@ export const generateReelContent = async (
       layoutConfig: { type: Type.ARRAY, items: layoutStepSchema },
       reasoning: { type: Type.STRING }
     },
-    required: ["html", "layoutConfig"]
+    required: ['html', 'layoutConfig']
   };
 
   const fallbackOrder = [modelName, 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
   const modelCandidates = Array.from(new Set(fallbackOrder.filter(Boolean)));
 
-  let resultJson: any = null;
-  let lastError: any = null;
+  let resultJson: GeneratedContent | null = null;
+  let lastError: unknown = null;
 
   for (const candidateModel of modelCandidates) {
     try {
@@ -310,13 +317,13 @@ export const generateReelContent = async (
       const result = await model.generateContent({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: {
-          responseMimeType: "application/json",
-          responseSchema: responseSchema,
-        } as any,
+          responseMimeType: 'application/json',
+          responseSchema: responseSchema
+        }
       });
 
       const response = await result.response;
-      resultJson = JSON.parse(response.text() || "{}");
+      resultJson = generatedContentSchema.parse(JSON.parse(response.text() || '{}'));
       if (!resultJson?.html || !resultJson?.layoutConfig) {
         throw new Error(`Invalid model output from ${candidateModel}`);
       }
@@ -325,15 +332,15 @@ export const generateReelContent = async (
         console.warn(`Model fallback succeeded: ${candidateModel} (requested: ${modelName})`);
       }
       break;
-    } catch (err: any) {
+    } catch (err: unknown) {
       lastError = err;
-      console.warn(`Model attempt failed (${candidateModel}):`, err?.message || err);
+      console.warn(`Model attempt failed (${candidateModel}):`, errorMessage(err, '') || err);
     }
   }
 
   try {
     if (!resultJson) {
-      throw lastError || new Error("All model attempts failed.");
+      throw lastError || new Error('All model attempts failed.');
     }
 
     // --- REEL HELPER API INJECTION ---
@@ -372,14 +379,33 @@ export const generateReelContent = async (
     }
     // -----------------------------
 
-    return resultJson as any as GeneratedContent;
-  } catch (error: any) {
-    console.error("Gemini Generation Error:", error);
-    let message = "Failed to generate content.";
-    if (error.message?.includes("404")) message = "Model not found. Please check API availability.";
-    else if (error.message?.includes("400")) message = "Bad Request. The prompt might be too long.";
-    else if (error.message?.includes("429")) message = "Too many requests. Please wait a moment.";
-    else if (error.message?.includes("API key")) message = "Invalid API Key.";
+    return resultJson;
+  } catch (error: unknown) {
+    console.error('Gemini Generation Error:', error);
+    let message = 'Failed to generate content.';
+    if (errorMessage(error, '').includes('404')) message = 'Model not found. Please check API availability.';
+    else if (errorMessage(error, '').includes('400')) message = 'Bad Request. The prompt might be too long.';
+    else if (errorMessage(error, '').includes('429')) message = 'Too many requests. Please wait a moment.';
+    else if (errorMessage(error, '').includes('API key')) message = 'Invalid API Key.';
     throw new Error(message);
   }
 };
+
+const generatedContentSchema = z
+  .object({
+    html: z.string(),
+    layoutConfig: z.array(
+      z
+        .object({
+          startTime: z.number(),
+          endTime: z.number(),
+          layoutMode: z.enum(['split', 'full-video', 'full-html', 'pip-html']),
+          splitRatio: z.number().optional(),
+          captionPosition: z.enum(['top', 'bottom', 'center', 'hidden']).optional(),
+          note: z.string().optional()
+        })
+        .passthrough()
+    ),
+    reasoning: z.string().optional()
+  })
+  .passthrough();

@@ -1,10 +1,11 @@
-
-export const extractAudioBlob = async (videoFile: File): Promise<Blob> => {
+export const extractAudioBlob = async (videoFile: File | Blob): Promise<Blob> => {
   try {
     const arrayBuffer = await videoFile.arrayBuffer();
-    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const AudioConstructor = window.AudioContext || window.webkitAudioContext;
+    if (!AudioConstructor) throw new Error('AudioContext is unavailable');
+    const audioCtx = new AudioConstructor();
     const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-    
+
     // WAV Encoder
     const numOfChan = audioBuffer.numberOfChannels;
     const length = audioBuffer.length * numOfChan * 2 + 44;
@@ -16,58 +17,56 @@ export const extractAudioBlob = async (videoFile: File): Promise<Blob> => {
     let offset = 0;
     let pos = 0;
 
-    const setUint16 = (data: any) => {
+    const setUint16 = (data: number) => {
       view.setUint16(pos, data, true);
       pos += 2;
     };
-    const setUint32 = (data: any) => {
+    const setUint32 = (data: number) => {
       view.setUint32(pos, data, true);
       pos += 4;
     };
 
     setUint32(0x46464952); // "RIFF"
-    setUint32(36 + audioBuffer.length * numOfChan * 2); 
+    setUint32(36 + audioBuffer.length * numOfChan * 2);
     setUint32(0x45564157); // "WAVE"
-    setUint32(0x20746d66); // "fmt " 
-    setUint32(16); 
-    setUint16(1); // PCM 
+    setUint32(0x20746d66); // "fmt "
+    setUint32(16);
+    setUint16(1); // PCM
     setUint16(numOfChan);
     setUint32(audioBuffer.sampleRate);
-    setUint32(audioBuffer.sampleRate * 2 * numOfChan); 
-    setUint16(numOfChan * 2); 
-    setUint16(16); 
-    setUint32(0x61746164); // "data" 
-    setUint32(audioBuffer.length * numOfChan * 2); 
+    setUint32(audioBuffer.sampleRate * 2 * numOfChan);
+    setUint16(numOfChan * 2);
+    setUint16(16);
+    setUint32(0x61746164); // "data"
+    setUint32(audioBuffer.length * numOfChan * 2);
 
-    for(i = 0; i < audioBuffer.numberOfChannels; i++)
-      channels.push(audioBuffer.getChannelData(i));
+    for (i = 0; i < audioBuffer.numberOfChannels; i++) channels.push(audioBuffer.getChannelData(i));
 
-    while(pos < audioBuffer.length) {
-      for(i = 0; i < numOfChan; i++) {
-        sample = Math.max(-1, Math.min(1, channels[i][pos])); 
-        sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767)|0; 
+    while (pos < audioBuffer.length) {
+      for (i = 0; i < numOfChan; i++) {
+        sample = Math.max(-1, Math.min(1, channels[i]?.[pos] ?? 0));
+        sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767) | 0;
         view.setInt16(44 + offset, sample, true);
         offset += 2;
       }
       pos++;
     }
 
-    return new Blob([buffer], {type: "audio/wav"});
-    
+    return new Blob([buffer], { type: 'audio/wav' });
   } catch (e) {
-    console.error("Audio extraction error:", e);
-    throw new Error("Failed to extract audio. Browser may not support decoding this video format.");
+    console.error('Audio extraction error:', e);
+    throw new Error('Failed to extract audio. Browser may not support decoding this video format.');
   }
 };
 
 export const extractWavFromVideo = async (videoFile: File): Promise<void> => {
-    const blob = await extractAudioBlob(videoFile);
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `extracted_audio_${Date.now()}.wav`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const blob = await extractAudioBlob(videoFile);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `extracted_audio_${Date.now()}.wav`;
+  a.click();
+  URL.revokeObjectURL(url);
 };
 
 export const fileToBase64 = (file: File | Blob): Promise<string> => {
@@ -75,9 +74,17 @@ export const fileToBase64 = (file: File | Blob): Promise<string> => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
     reader.onload = () => {
-      const result = reader.result as string;
+      const result = reader.result;
+      if (typeof result !== 'string') {
+        reject(new Error('FileReader did not return a data URL'));
+        return;
+      }
       // Remove data url prefix (e.g. "data:audio/mp3;base64,")
       const base64 = result.split(',')[1];
+      if (base64 === undefined) {
+        reject(new Error('Invalid file data URL'));
+        return;
+      }
       resolve(base64);
     };
     reader.onerror = (error) => reject(error);
@@ -114,6 +121,6 @@ export const pcmToWav = (pcmData: Uint8Array, sampleRate: number = 24000, numCha
   writeString(view, 36, 'data');
   view.setUint32(40, totalDataLen, true);
 
-  const blob = new Blob([header, pcmData], { type: 'audio/wav' });
+  const blob = new Blob([header, new Uint8Array(pcmData)], { type: 'audio/wav' });
   return blob;
 };

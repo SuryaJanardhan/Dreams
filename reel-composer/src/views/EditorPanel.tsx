@@ -42,7 +42,7 @@ interface EditorPanelProps {
   topicContext: string;
   onTopicContextChange: (text: string) => void;
   srtText: string;
-  bgMusicName?: string;
+  bgMusicName?: string | undefined;
   onBgMusicChange: (file: File | null) => void;
   bgMusicVolume: number;
   onBgVolumeChange: (vol: number) => void;
@@ -137,13 +137,13 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
         layoutConfig: parsedConfig
       });
     } catch (e) {
-      alert("Invalid JSON in Config");
+      alert('Invalid JSON in Config');
     }
   };
 
   const handleSaveKeyConfig = async () => {
     if (!tempKey.trim()) {
-      setKeyError("Please enter a custom API Key.");
+      setKeyError('Please enter a custom API Key.');
       return;
     }
     setIsValidatingKey(true);
@@ -159,7 +159,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
       setTimeout(() => onSaveApiKey(), 0);
       setIsEditingKey(false);
     } else {
-      setKeyError("Connection failed. Check key/model.");
+      setKeyError('Connection failed. Check key/model.');
     }
   };
 
@@ -169,7 +169,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
     try {
       await extractWavFromVideo(videoFile);
     } catch (e) {
-      alert("Failed to extract audio.");
+      alert('Failed to extract audio.');
     } finally {
       setIsExtracting(false);
     }
@@ -180,7 +180,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
     navigator.clipboard.writeText(prompt);
     setCopySuccess(true);
     setTimeout(() => setCopySuccess(false), 2000);
-  }
+  };
 
   const handleMusicUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -241,12 +241,19 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
         )}
         {activeTab === 'ai_audio' && (
           <div className="space-y-6 text-sm">
-
             {/* Visual Context / Refinement Instructions */}
-            <div className={`p-4 rounded-lg space-y-3 ${hasContent ? 'bg-purple-900/10 border border-purple-500/30' : 'bg-gray-800/50'}`}>
+            <div
+              className={`p-4 rounded-lg space-y-3 ${hasContent ? 'bg-purple-900/10 border border-purple-500/30' : 'bg-gray-800/50'}`}
+            >
               <div className="flex justify-between items-center">
                 <h3 className="font-bold text-white flex items-center gap-2">
-                  {hasContent ? <><RefreshCw size={14} className="text-purple-400" /> Refine Scene</> : "Visual Context"}
+                  {hasContent ? (
+                    <>
+                      <RefreshCw size={14} className="text-purple-400" /> Refine Scene
+                    </>
+                  ) : (
+                    'Visual Context'
+                  )}
                 </h3>
               </div>
 
@@ -254,7 +261,11 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                 value={topicContext}
                 onChange={(e) => onTopicContextChange(e.target.value)}
                 className="w-full h-24 bg-gray-900 border border-gray-700 rounded p-2 text-xs text-gray-300 resize-none focus:border-purple-500 focus:outline-none"
-                placeholder={hasContent ? "Describe changes to make... e.g. 'Make the background blue' or 'Add particles'" : "Describe your video topic... e.g. 'Quantum Physics explanation with grids'"}
+                placeholder={
+                  hasContent
+                    ? "Describe changes to make... e.g. 'Make the background blue' or 'Add particles'"
+                    : "Describe your video topic... e.g. 'Quantum Physics explanation with grids'"
+                }
               />
 
               <div className="flex gap-2">
@@ -263,7 +274,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                   className="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-2 rounded text-xs flex items-center justify-center gap-2 transition-colors"
                 >
                   {copySuccess ? <CheckCircle2 size={12} className="text-green-500" /> : <Copy size={12} />}
-                  {copySuccess ? "Copied!" : "Copy Full Prompt"}
+                  {copySuccess ? 'Copied!' : 'Copy Full Prompt'}
                 </button>
               </div>
             </div>
@@ -280,7 +291,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                     className="text-xs text-gray-400 hover:text-white p-1 hover:bg-gray-700 rounded transition-colors flex items-center gap-1"
                     title="Edit API Key"
                   >
-                    <Edit2 size={12} /> {isDefaultKey ? "Upgrade Key" : "Edit"}
+                    <Edit2 size={12} /> {isDefaultKey ? 'Upgrade Key' : 'Edit'}
                   </button>
                 )}
               </div>
@@ -290,12 +301,15 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                 <div className="space-y-2">
                   <div className="flex justify-between items-center bg-gray-950/50 p-2 rounded border border-gray-800">
                     <div className="flex items-center gap-2 text-xs text-gray-300">
-                      <Key size={12} className={isDefaultKey ? "text-green-500" : "text-blue-500"} />
-                      <span className={isDefaultKey ? "text-green-400 font-semibold" : ""}>
-                        {isDefaultKey ? 'Free Tier' : (apiKey ? `••••••••${apiKey.slice(-4)}` : 'Not Configured')}
+                      <Key size={12} className={isDefaultKey ? 'text-green-500' : 'text-blue-500'} />
+                      <span className={isDefaultKey ? 'text-green-400 font-semibold' : ''}>
+                        {isDefaultKey ? 'Free Tier' : apiKey ? `••••••••${apiKey.slice(-4)}` : 'Not Configured'}
                       </span>
                     </div>
-                    <div className="text-[10px] bg-purple-900/40 text-purple-300 px-2 py-0.5 rounded flex items-center gap-1 max-w-[150px] truncate" title={modelName}>
+                    <div
+                      className="text-[10px] bg-purple-900/40 text-purple-300 px-2 py-0.5 rounded flex items-center gap-1 max-w-[150px] truncate"
+                      title={modelName}
+                    >
                       {modelName}
                       {isDefaultKey && <Lock size={8} />}
                     </div>
@@ -304,13 +318,18 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                   <button
                     onClick={onGenerate}
                     disabled={isGenerating || !apiKey}
-                    className={`w-full flex items-center justify-center gap-2 py-2.5 rounded font-bold transition-all mt-2 ${!apiKey
-                      ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
-                      : 'bg-gradient-to-r from-purple-700 to-pink-700 hover:from-purple-600 hover:to-pink-600 text-white shadow-lg shadow-purple-900/20'
-                      }`}
+                    className={`w-full flex items-center justify-center gap-2 py-2.5 rounded font-bold transition-all mt-2 ${
+                      !apiKey
+                        ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                        : 'bg-gradient-to-r from-purple-700 to-pink-700 hover:from-purple-600 hover:to-pink-600 text-white shadow-lg shadow-purple-900/20'
+                    }`}
                   >
-                    {isGenerating ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Sparkles size={14} />}
-                    {hasContent ? "Update Scene (Refine)" : "Generate Scene"}
+                    {isGenerating ? (
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <Sparkles size={14} />
+                    )}
+                    {hasContent ? 'Update Scene (Refine)' : 'Generate Scene'}
                   </button>
                 </div>
               ) : (
@@ -320,19 +339,22 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                     <div className="flex justify-between">
                       <label className="text-xs text-gray-400">Custom API Key</label>
                       <div className="flex gap-2">
-                        <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-[10px] text-purple-400 hover:text-purple-300 flex items-center gap-1">
+                        <a
+                          href="https://aistudio.google.com/app/apikey"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[10px] text-purple-400 hover:text-purple-300 flex items-center gap-1"
+                        >
                           <ExternalLink size={10} /> Get Free Key
                         </a>
-                        {isDefaultKey && (
-                          <span className="text-[10px] text-green-400">Currently on Free Tier</span>
-                        )}
+                        {isDefaultKey && <span className="text-[10px] text-green-400">Currently on Free Tier</span>}
                       </div>
                     </div>
                     <input
                       type="password"
                       value={tempKey}
                       onChange={(e) => setTempKey(e.target.value)}
-                      placeholder={isDefaultKey ? "Enter your custom key..." : ""}
+                      placeholder={isDefaultKey ? 'Enter your custom key...' : ''}
                       className="w-full bg-gray-950 border border-gray-700 rounded px-2 py-1.5 text-xs text-white focus:border-purple-500 outline-none"
                     />
                   </div>
@@ -359,7 +381,11 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                     )}
                   </div>
 
-                  {keyError && <div className="text-xs text-red-400 flex items-center gap-1"><X size={10} /> {keyError}</div>}
+                  {keyError && (
+                    <div className="text-xs text-red-400 flex items-center gap-1">
+                      <X size={10} /> {keyError}
+                    </div>
+                  )}
 
                   <div className="flex gap-2">
                     <button
@@ -373,7 +399,11 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                       disabled={isValidatingKey}
                       className="flex-1 bg-purple-600 hover:bg-purple-500 text-white py-1.5 rounded text-xs font-semibold transition-colors flex items-center justify-center gap-1"
                     >
-                      {isValidatingKey ? <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Check size={12} />}
+                      {isValidatingKey ? (
+                        <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      ) : (
+                        <Check size={12} />
+                      )}
                       Verify & Save
                     </button>
                   </div>
@@ -403,18 +433,40 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
               <h3 className="font-bold text-white flex items-center gap-2">
                 <MessageSquare size={16} /> External Intelligence
               </h3>
-              <p className="text-[10px] text-gray-400 mb-2">Manual Workflow: Copy prompt above -&gt; Generate in External App -&gt; Paste code in HTML Tab.</p>
+              <p className="text-[10px] text-gray-400 mb-2">
+                Manual Workflow: Copy prompt above -&gt; Generate in External App -&gt; Paste code in HTML Tab.
+              </p>
               <div className="grid grid-cols-2 gap-2">
-                <a href="https://chatgpt.com/" target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 bg-gray-700 hover:bg-teal-700/50 text-white py-3 rounded-lg text-xs font-medium transition-colors border border-gray-600 hover:border-teal-500/50">
+                <a
+                  href="https://chatgpt.com/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center justify-center gap-2 bg-gray-700 hover:bg-teal-700/50 text-white py-3 rounded-lg text-xs font-medium transition-colors border border-gray-600 hover:border-teal-500/50"
+                >
                   <Bot size={14} className="text-teal-400" /> ChatGPT
                 </a>
-                <a href="https://claude.ai/new" target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 bg-gray-700 hover:bg-orange-700/50 text-white py-3 rounded-lg text-xs font-medium transition-colors border border-gray-600 hover:border-orange-500/50">
+                <a
+                  href="https://claude.ai/new"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center justify-center gap-2 bg-gray-700 hover:bg-orange-700/50 text-white py-3 rounded-lg text-xs font-medium transition-colors border border-gray-600 hover:border-orange-500/50"
+                >
                   <BrainCircuit size={14} className="text-orange-400" /> Claude
                 </a>
-                <a href="https://gemini.google.com/app" target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 bg-gray-700 hover:bg-blue-700/50 text-white py-3 rounded-lg text-xs font-medium transition-colors border border-gray-600 hover:border-blue-500/50">
+                <a
+                  href="https://gemini.google.com/app"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center justify-center gap-2 bg-gray-700 hover:bg-blue-700/50 text-white py-3 rounded-lg text-xs font-medium transition-colors border border-gray-600 hover:border-blue-500/50"
+                >
                   <Sparkles size={14} className="text-blue-400" /> Gemini
                 </a>
-                <a href="https://chat.deepseek.com/" target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 bg-gray-700 hover:bg-blue-600/50 text-white py-3 rounded-lg text-xs font-medium transition-colors border border-gray-600 hover:border-blue-400/50">
+                <a
+                  href="https://chat.deepseek.com/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center justify-center gap-2 bg-gray-700 hover:bg-blue-600/50 text-white py-3 rounded-lg text-xs font-medium transition-colors border border-gray-600 hover:border-blue-400/50"
+                >
                   <Cpu size={14} className="text-blue-300" /> DeepSeek
                 </a>
               </div>
@@ -441,10 +493,20 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
               </button>
 
               <div className="flex justify-between gap-2 mt-2">
-                <a href="https://transcri.io/en/subtitle-generator/srt" target="_blank" rel="noreferrer" className="flex-1 bg-gray-700 hover:bg-gray-600 text-center py-1.5 rounded text-xs text-gray-300">
+                <a
+                  href="https://transcri.io/en/subtitle-generator/srt"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex-1 bg-gray-700 hover:bg-gray-600 text-center py-1.5 rounded text-xs text-gray-300"
+                >
                   Transcri.io
                 </a>
-                <a href="https://podcast.adobe.com/enhance" target="_blank" rel="noreferrer" className="flex-1 bg-gray-700 hover:bg-gray-600 text-center py-1.5 rounded text-xs text-gray-300">
+                <a
+                  href="https://podcast.adobe.com/enhance"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex-1 bg-gray-700 hover:bg-gray-600 text-center py-1.5 rounded text-xs text-gray-300"
+                >
                   Adobe Enhance
                 </a>
               </div>
@@ -470,7 +532,11 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                   >
                     <RotateCcw size={14} />
                   </button>
-                  {isSubtitleControlsExpanded ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
+                  {isSubtitleControlsExpanded ? (
+                    <ChevronUp size={16} className="text-gray-400" />
+                  ) : (
+                    <ChevronDown size={16} className="text-gray-400" />
+                  )}
                 </div>
               </div>
 
@@ -482,7 +548,9 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                     <div className="flex items-center gap-2">
                       <input
                         type="range"
-                        min="10" max="48" step="2"
+                        min="10"
+                        max="48"
+                        step="2"
                         value={subtitleFontSize}
                         onChange={(e) => onSubtitleFontSizeChange(parseInt(e.target.value))}
                         className="flex-1 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
@@ -562,7 +630,9 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                     <div className="flex items-center gap-2">
                       <input
                         type="range"
-                        min="0" max="32" step="2"
+                        min="0"
+                        max="32"
+                        step="2"
                         value={subtitlePaddingX}
                         onChange={(e) => onSubtitlePaddingXChange(parseInt(e.target.value))}
                         className="flex-1 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
@@ -577,7 +647,9 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                     <div className="flex items-center gap-2">
                       <input
                         type="range"
-                        min="0" max="32" step="2"
+                        min="0"
+                        max="32"
+                        step="2"
                         value={subtitlePaddingY}
                         onChange={(e) => onSubtitlePaddingYChange(parseInt(e.target.value))}
                         className="flex-1 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
@@ -622,7 +694,9 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                 <span className="text-xs text-gray-400">Vol:</span>
                 <input
                   type="range"
-                  min="0" max="1" step="0.05"
+                  min="0"
+                  max="1"
+                  step="0.05"
                   value={bgMusicVolume}
                   onChange={(e) => onBgVolumeChange(parseFloat(e.target.value))}
                   className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
@@ -630,7 +704,6 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                 <span className="text-xs w-8">{(bgMusicVolume * 100).toFixed(0)}%</span>
               </div>
             </div>
-
           </div>
         )}
       </div>

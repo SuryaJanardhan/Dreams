@@ -9,7 +9,7 @@ interface EditorViewProps {
   generatedContent: GeneratedContent;
   isFullScreen: boolean;
   toggleFullScreen: () => void;
-  bgMusicUrl?: string;
+  bgMusicUrl?: string | undefined;
   bgMusicVolume: number;
   isGenerating: boolean;
   onGenerate: () => void;
@@ -18,7 +18,7 @@ interface EditorViewProps {
   topicContext: string;
   onTopicContextChange: (text: string) => void;
   srtText: string;
-  bgMusicName?: string;
+  bgMusicName?: string | undefined;
   onBgMusicChange: (file: File | null) => void;
   onBgVolumeChange: (vol: number) => void;
   apiKey: string;

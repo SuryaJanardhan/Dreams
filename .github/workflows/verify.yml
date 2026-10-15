@@ -7,7 +7,9 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+    env:
+      PUPPETEER_SKIP_DOWNLOAD: "true"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -15,8 +17,12 @@ jobs:
           node-version: "22"
           cache: npm
       - run: npm ci
+      - run: npm ci --prefix reel-composer
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: npx playwright install chromium --with-deps
+      - run: npm run check:migration
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      - run: npm run syntax
+      - run: npm run smoke

@@ -1,4 +1,3 @@
-
 export interface SRTItem {
   id: number;
   startTime: number; // in seconds
@@ -10,14 +9,14 @@ export interface LayoutConfigStep {
   startTime: number;
   endTime: number;
   layoutMode: 'split' | 'full-video' | 'full-html' | 'pip-html';
-  splitRatio?: number; // 0 to 1 (percentage of height given to HTML/Animation layer)
-  captionPosition?: 'top' | 'bottom' | 'center' | 'hidden';
+  splitRatio?: number | undefined; // 0 to 1 (percentage of height given to HTML/Animation layer)
+  captionPosition?: 'top' | 'bottom' | 'center' | 'hidden' | undefined;
 }
 
 export interface GeneratedContent {
   html: string;
   layoutConfig: LayoutConfigStep[];
-  reasoning?: string;
+  reasoning?: string | undefined;
 }
 
 export enum AppState {

@@ -8,9 +8,11 @@ Start with [implementation and operation notes](docs/IMPLEMENTATION.md), [projec
 
 Failures preserve progress and successful links, set the Sheet's AutomationControl PAUSED flag, clean generated work where safe, and email outcomes. No automatic repost or provider fallback occurs. Clear PAUSED after investigating; terminal rows are not automatically requeued.
 
-Use Node 22 or newer. Offline verification: `npm ci`, `npm run typecheck`, `npm test`, and `npm run build`. Renderer tests also need FFmpeg and Playwright Chromium (`npx playwright install chromium`). CI installs these tools. Tests do not publish to live providers.
+Use Node 22 or newer. Install with `PUPPETEER_SKIP_DOWNLOAD=true npm ci` and `npm ci --prefix reel-composer`. Offline verification: `npm run check:migration`, `npm run typecheck`, `npm test`, `npm run build`, `npm run syntax`, and `npm run smoke`. Renderer tests and smoke checks need FFmpeg and Playwright Chromium (`npx playwright install chromium`). CI installs these tools. Tests do not publish to live providers.
 
-The previous JavaScript pipeline, composer editor, and presenter code remain in the repository during migration, including existing uncommitted user work. They are not the active Actions production path. Live provider integration and a complete 60-second CPU runtime benchmark remain unverified. Actions allowance and provider quotas depend on the account; zero cost is not guaranteed by this implementation.
+All 111 original first-party JavaScript files have been migrated to strict TypeScript, including the legacy pipeline and historical tools. Installation generates compatibility launchers for their old `.js` command paths. The composer editor also has strict compiler checks. Existing workflow and notification edits are preserved. See the [migration plan](docs/TYPESCRIPT_MIGRATION_PLAN.md), [file inventory](docs/TYPESCRIPT_MIGRATION_INVENTORY.md), and [results and limitations](docs/TYPESCRIPT_MIGRATION_RESULTS.md).
+
+The legacy pipeline and presenter code are separate from the active Actions production path. Historical tools with missing baseline implementations remain explicitly unavailable. Live provider integration and a complete 60-second CPU runtime benchmark remain unverified. Actions allowance and provider quotas depend on the account; zero cost is not guaranteed by this implementation.
 
 <details>
 <summary>Historical setup notes — legacy pipeline</summary>

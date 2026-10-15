@@ -1,0 +1,446 @@
+[
+  {
+    "source": "archive/automate_frontend.js",
+    "target": "archive/automate_frontend.ts"
+  },
+  {
+    "source": "archive/prepare_data.js",
+    "target": "archive/prepare_data.ts"
+  },
+  {
+    "source": "archive/test_full_automation.js",
+    "target": "archive/test_full_automation.ts"
+  },
+  {
+    "source": "archive/test_new_workflow.js",
+    "target": "archive/test_new_workflow.ts"
+  },
+  {
+    "source": "archive/test_reel_workflow.js",
+    "target": "archive/test_reel_workflow.ts"
+  },
+  {
+    "source": "archive/wrap_html.js",
+    "target": "archive/wrap_html.ts"
+  },
+  {
+    "source": "bin/create_test_video.js",
+    "target": "bin/create_test_video.ts"
+  },
+  {
+    "source": "bin/debug_subtitles.js",
+    "target": "bin/debug_subtitles.ts"
+  },
+  {
+    "source": "bin/delete_all_social_posts.js",
+    "target": "bin/delete_all_social_posts.ts"
+  },
+  {
+    "source": "bin/diagnose_facebook.js",
+    "target": "bin/diagnose_facebook.ts"
+  },
+  {
+    "source": "bin/local_test_video.js",
+    "target": "bin/local_test_video.ts"
+  },
+  {
+    "source": "bin/mass_cleanup.js",
+    "target": "bin/mass_cleanup.ts"
+  },
+  {
+    "source": "bin/preview_content.js",
+    "target": "bin/preview_content.ts"
+  },
+  {
+    "source": "bin/quick_api_status.js",
+    "target": "bin/quick_api_status.ts"
+  },
+  {
+    "source": "bin/test_api_keys_focused.js",
+    "target": "bin/test_api_keys_focused.ts"
+  },
+  {
+    "source": "bin/test_api_security.js",
+    "target": "bin/test_api_security.ts"
+  },
+  {
+    "source": "bin/test_consolidated_workflow.js",
+    "target": "bin/test_consolidated_workflow.ts"
+  },
+  {
+    "source": "bin/test_dummy_video_processing.js",
+    "target": "bin/test_dummy_video_processing.ts"
+  },
+  {
+    "source": "bin/test_dynamic_timing.js",
+    "target": "bin/test_dynamic_timing.ts"
+  },
+  {
+    "source": "bin/test_facebook_dummy.js",
+    "target": "bin/test_facebook_dummy.ts"
+  },
+  {
+    "source": "bin/test_facebook_production.js",
+    "target": "bin/test_facebook_production.ts"
+  },
+  {
+    "source": "bin/test_facebook_upload.js",
+    "target": "bin/test_facebook_upload.ts"
+  },
+  {
+    "source": "bin/test_fresh_dummy_subtitles.js",
+    "target": "bin/test_fresh_dummy_subtitles.ts"
+  },
+  {
+    "source": "bin/test_full_video.js",
+    "target": "bin/test_full_video.ts"
+  },
+  {
+    "source": "bin/test_gemini_audio.js",
+    "target": "bin/test_gemini_audio.ts"
+  },
+  {
+    "source": "bin/test_image.js",
+    "target": "bin/test_image.ts"
+  },
+  {
+    "source": "bin/test_image_service.js",
+    "target": "bin/test_image_service.ts"
+  },
+  {
+    "source": "bin/test_image_video_integration.js",
+    "target": "bin/test_image_video_integration.ts"
+  },
+  {
+    "source": "bin/test_instagram_permalink.js",
+    "target": "bin/test_instagram_permalink.ts"
+  },
+  {
+    "source": "bin/test_instagram_upload.js",
+    "target": "bin/test_instagram_upload.ts"
+  },
+  {
+    "source": "bin/test_instagram_url.js",
+    "target": "bin/test_instagram_url.ts"
+  },
+  {
+    "source": "bin/test_local_video_processing.js",
+    "target": "bin/test_local_video_processing.ts"
+  },
+  {
+    "source": "bin/test_oauth2_youtube.js",
+    "target": "bin/test_oauth2_youtube.ts"
+  },
+  {
+    "source": "bin/test_optimized_compression.js",
+    "target": "bin/test_optimized_compression.ts"
+  },
+  {
+    "source": "bin/test_optimized_workflow.js",
+    "target": "bin/test_optimized_workflow.ts"
+  },
+  {
+    "source": "bin/test_posts_empty.js",
+    "target": "bin/test_posts_empty.ts"
+  },
+  {
+    "source": "bin/test_posts_workflow.js",
+    "target": "bin/test_posts_workflow.ts"
+  },
+  {
+    "source": "bin/test_posts_workflow_endpoint.js",
+    "target": "bin/test_posts_workflow_endpoint.ts"
+  },
+  {
+    "source": "bin/test_realistic_video.js",
+    "target": "bin/test_realistic_video.ts"
+  },
+  {
+    "source": "bin/test_reel_generation.js",
+    "target": "bin/test_reel_generation.ts"
+  },
+  {
+    "source": "bin/test_reference_video_processing.js",
+    "target": "bin/test_reference_video_processing.ts"
+  },
+  {
+    "source": "bin/test_resilient_workflow.js",
+    "target": "bin/test_resilient_workflow.ts"
+  },
+  {
+    "source": "bin/test_service_separation.js",
+    "target": "bin/test_service_separation.ts"
+  },
+  {
+    "source": "bin/test_simplified_image_service.js",
+    "target": "bin/test_simplified_image_service.ts"
+  },
+  {
+    "source": "bin/test_simplified_workflow.js",
+    "target": "bin/test_simplified_workflow.ts"
+  },
+  {
+    "source": "bin/test_single_title_image.js",
+    "target": "bin/test_single_title_image.ts"
+  },
+  {
+    "source": "bin/test_slide_generation.js",
+    "target": "bin/test_slide_generation.ts"
+  },
+  {
+    "source": "bin/test_slide_generation_endpoint.js",
+    "target": "bin/test_slide_generation_endpoint.ts"
+  },
+  {
+    "source": "bin/test_social_media_content.js",
+    "target": "bin/test_social_media_content.ts"
+  },
+  {
+    "source": "bin/test_subtitle_overlay.js",
+    "target": "bin/test_subtitle_overlay.ts"
+  },
+  {
+    "source": "bin/test_subtitles_only.js",
+    "target": "bin/test_subtitles_only.ts"
+  },
+  {
+    "source": "bin/test_supabase_connection.js",
+    "target": "bin/test_supabase_connection.ts"
+  },
+  {
+    "source": "bin/test_supabase_upload.js",
+    "target": "bin/test_supabase_upload.ts"
+  },
+  {
+    "source": "bin/test_video_composition.js",
+    "target": "bin/test_video_composition.ts"
+  },
+  {
+    "source": "bin/test_video_creation.js",
+    "target": "bin/test_video_creation.ts"
+  },
+  {
+    "source": "bin/test_video_creation2.js",
+    "target": "bin/test_video_creation2.ts"
+  },
+  {
+    "source": "bin/test_workflow_auto.js",
+    "target": "bin/test_workflow_auto.ts"
+  },
+  {
+    "source": "bin/test_youtube_upload.js",
+    "target": "bin/test_youtube_upload.ts"
+  },
+  {
+    "source": "bin/test_youtube_upload_dummy.js",
+    "target": "bin/test_youtube_upload_dummy.ts"
+  },
+  {
+    "source": "bin/test_youtube_upload_small.js",
+    "target": "bin/test_youtube_upload_small.ts"
+  },
+  {
+    "source": "bin/verify_subtitles.js",
+    "target": "bin/verify_subtitles.ts"
+  },
+  {
+    "source": "src/config/database.js",
+    "target": "src/config/database.ts"
+  },
+  {
+    "source": "src/config/ffmpeg.js",
+    "target": "src/config/ffmpeg.ts"
+  },
+  {
+    "source": "src/config/google.js",
+    "target": "src/config/google.ts"
+  },
+  {
+    "source": "src/config/logger.js",
+    "target": "src/config/logger.ts"
+  },
+  {
+    "source": "src/config/styles.js",
+    "target": "src/config/styles.ts"
+  },
+  {
+    "source": "src/controllers/audioController.js",
+    "target": "src/controllers/audioController.ts"
+  },
+  {
+    "source": "src/controllers/imageController.js",
+    "target": "src/controllers/imageController.ts"
+  },
+  {
+    "source": "src/controllers/reelController.js",
+    "target": "src/controllers/reelController.ts"
+  },
+  {
+    "source": "src/controllers/scriptController.js",
+    "target": "src/controllers/scriptController.ts"
+  },
+  {
+    "source": "src/controllers/videoController.js",
+    "target": "src/controllers/videoController.ts"
+  },
+  {
+    "source": "src/controllers/workflowController.js",
+    "target": "src/controllers/workflowController.ts"
+  },
+  {
+    "source": "src/main_automation.js",
+    "target": "src/main_automation.ts"
+  },
+  {
+    "source": "src/middleware/upload.js",
+    "target": "src/middleware/upload.ts"
+  },
+  {
+    "source": "src/routes/audio.js",
+    "target": "src/routes/audio.ts"
+  },
+  {
+    "source": "src/routes/images.js",
+    "target": "src/routes/images.ts"
+  },
+  {
+    "source": "src/routes/reel.js",
+    "target": "src/routes/reel.ts"
+  },
+  {
+    "source": "src/routes/script.js",
+    "target": "src/routes/script.ts"
+  },
+  {
+    "source": "src/routes/testFFmpeg.js",
+    "target": "src/routes/testFFmpeg.ts"
+  },
+  {
+    "source": "src/routes/video.js",
+    "target": "src/routes/video.ts"
+  },
+  {
+    "source": "src/routes/workflow.js",
+    "target": "src/routes/workflow.ts"
+  },
+  {
+    "source": "src/services/audioService.js",
+    "target": "src/services/audioService.ts"
+  },
+  {
+    "source": "src/services/cleanupService.js",
+    "target": "src/services/cleanupService.ts"
+  },
+  {
+    "source": "src/services/compositionService.js",
+    "target": "src/services/compositionService.ts"
+  },
+  {
+    "source": "src/services/emailService.js",
+    "target": "src/services/emailService.ts"
+  },
+  {
+    "source": "src/services/facebookPostMaker.js",
+    "target": "src/services/facebookPostMaker.ts"
+  },
+  {
+    "source": "src/services/imageService.js",
+    "target": "src/services/imageService.ts"
+  },
+  {
+    "source": "src/services/instagramPostMaker.js",
+    "target": "src/services/instagramPostMaker.ts"
+  },
+  {
+    "source": "src/services/newFeaturesService.js",
+    "target": "src/services/newFeaturesService.ts"
+  },
+  {
+    "source": "src/services/publishingService.js",
+    "target": "src/services/publishingService.ts"
+  },
+  {
+    "source": "src/services/puppeteerRenderService.js",
+    "target": "src/services/puppeteerRenderService.ts"
+  },
+  {
+    "source": "src/services/reactRenderService.js",
+    "target": "src/services/reactRenderService.ts"
+  },
+  {
+    "source": "src/services/scriptService.js",
+    "target": "src/services/scriptService.ts"
+  },
+  {
+    "source": "src/services/sheetsService.js",
+    "target": "src/services/sheetsService.ts"
+  },
+  {
+    "source": "src/services/socialMediaPostingService.js",
+    "target": "src/services/socialMediaPostingService.ts"
+  },
+  {
+    "source": "src/services/socialMediaService.js",
+    "target": "src/services/socialMediaService.ts"
+  },
+  {
+    "source": "src/services/videoProcessingService.js",
+    "target": "src/services/videoProcessingService.ts"
+  },
+  {
+    "source": "src/services/videoService.js",
+    "target": "src/services/videoService.ts"
+  },
+  {
+    "source": "src/services/voiceboxService.js",
+    "target": "src/services/voiceboxService.ts"
+  },
+  {
+    "source": "src/services/wav2lipService.js",
+    "target": "src/services/wav2lipService.ts"
+  },
+  {
+    "source": "src/utils/subtitles.js",
+    "target": "src/utils/subtitles.ts"
+  },
+  {
+    "source": "src/utils/textCleaner.js",
+    "target": "src/utils/textCleaner.ts"
+  },
+  {
+    "source": "test/invoke_workflow.js",
+    "target": "test/invoke_workflow.ts"
+  },
+  {
+    "source": "test/server.js",
+    "target": "test/server.ts"
+  },
+  {
+    "source": "test/test_audio_quality.js",
+    "target": "test/test_audio_quality.ts"
+  },
+  {
+    "source": "test/test_local_endpoint.js",
+    "target": "test/test_local_endpoint.ts"
+  },
+  {
+    "source": "test/test_supabase.js",
+    "target": "test/test_supabase.ts"
+  },
+  {
+    "source": "test/test_voicebox_check.js",
+    "target": "test/test_voicebox_check.ts"
+  },
+  {
+    "source": "test/test_wav2lip_hq.js",
+    "target": "test/test_wav2lip_hq.ts"
+  },
+  {
+    "source": "test/test_worker_image.js",
+    "target": "test/test_worker_image.ts"
+  },
+  {
+    "source": "test/test_workflow_auto.js",
+    "target": "test/test_workflow_auto.ts"
+  }
+]

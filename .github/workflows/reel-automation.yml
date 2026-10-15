@@ -15,6 +15,7 @@ jobs:
     timeout-minutes: 120
     env:
       AUTOMATION_BUDGET_MINUTES: "120"
+      PUPPETEER_SKIP_DOWNLOAD: "true"
       GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
       GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -46,7 +47,7 @@ jobs:
           node-version: "22"
           cache: npm
       - name: Install and check TypeScript modules
-        run: npm ci && npm run typecheck
+        run: npm ci && npm run typecheck:automation
       - name: Check Sheet control and eligibility before expensive setup
         id: gate
         run: node --import tsx src/automation/gate.ts

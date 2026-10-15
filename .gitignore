@@ -134,3 +134,12 @@ liveportrait/
 yt-and-sheets-1f9eb603e3a8.json
 .automation-runs/
 .scene-test/
+
+.migration-baseline/
+dist-legacy/
+
+# Generated legacy command/module compatibility launchers
+src/**/*.js
+bin/**/*.js
+test/**/*.js
+archive/**/*.js
