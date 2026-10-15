@@ -10,14 +10,14 @@ interface ReelPlayerProps {
   onTimeUpdate?: (time: number) => void;
   fullScreenMode: boolean;
   toggleFullScreen: () => void;
-  bgMusicUrl?: string;
-  bgMusicVolume?: number;
-  subtitleFontSize?: number;
-  subtitleFontFamily?: string;
-  subtitleColor?: string;
-  subtitleBgColor?: string;
-  subtitlePaddingX?: number;
-  subtitlePaddingY?: number;
+  bgMusicUrl?: string | undefined;
+  bgMusicVolume?: number | undefined;
+  subtitleFontSize?: number | undefined;
+  subtitleFontFamily?: string | undefined;
+  subtitleColor?: string | undefined;
+  subtitleBgColor?: string | undefined;
+  subtitlePaddingX?: number | undefined;
+  subtitlePaddingY?: number | undefined;
 }
 
 export const ReelPlayer: React.FC<ReelPlayerProps> = ({
@@ -51,31 +51,33 @@ export const ReelPlayer: React.FC<ReelPlayerProps> = ({
   const [iframeKey, setIframeKey] = useState(0);
 
   // --- Computed State based on Time ---
-  const currentLayout = useMemo(() => {
+  const currentLayout = useMemo<LayoutConfigStep>(() => {
     // 1. Try to find the specific layout step for the current time
-    const match = layoutConfig.find(step => currentTime >= step.startTime && currentTime < step.endTime);
+    const match = layoutConfig.find((step) => currentTime >= step.startTime && currentTime < step.endTime);
     if (match) return match;
 
     // 2. If no match, check if we are past the last step (keep the final state)
     if (layoutConfig.length > 0) {
       const lastStep = layoutConfig[layoutConfig.length - 1];
-      if (currentTime >= lastStep.endTime) {
+      if (lastStep && currentTime >= lastStep.endTime) {
         return lastStep;
       }
     }
 
     // 3. Fallback default
-    return layoutConfig[0] || {
-      layoutMode: 'split',
-      splitRatio: 0.5,
-      captionPosition: 'center',
-      startTime: 0,
-      endTime: 9999
-    };
+    return (
+      layoutConfig[0] || {
+        layoutMode: 'split',
+        splitRatio: 0.5,
+        captionPosition: 'center',
+        startTime: 0,
+        endTime: 9999
+      }
+    );
   }, [currentTime, layoutConfig]);
 
   const currentCaption = useMemo(() => {
-    return srtData.find(item => currentTime >= item.startTime && currentTime <= item.endTime);
+    return srtData.find((item) => currentTime >= item.startTime && currentTime <= item.endTime);
   }, [currentTime, srtData]);
 
   // --- Styles calculation ---
@@ -105,7 +107,7 @@ export const ReelPlayer: React.FC<ReelPlayerProps> = ({
 
     return {
       htmlContainer: { height: htmlHeight, transition, zIndex: htmlZIndex },
-      videoContainer: { height: videoHeight, transition, zIndex: videoZIndex },
+      videoContainer: { height: videoHeight, transition, zIndex: videoZIndex }
     };
   };
 
@@ -122,7 +124,7 @@ export const ReelPlayer: React.FC<ReelPlayerProps> = ({
       textAlign: 'center',
       pointerEvents: 'none',
       zIndex: 50, // Ensure high Z-index
-      transition: 'top 0.5s cubic-bezier(0.4, 0, 0.2, 1)',
+      transition: 'top 0.5s cubic-bezier(0.4, 0, 0.2, 1)'
     };
 
     if (captionPosition === 'hidden') {
@@ -136,10 +138,13 @@ export const ReelPlayer: React.FC<ReelPlayerProps> = ({
 
     // Full screen modes fallback
     switch (captionPosition) {
-      case 'top': return { ...baseStyle, top: '15%' };
-      case 'center': return { ...baseStyle, top: '50%' };
+      case 'top':
+        return { ...baseStyle, top: '15%' };
+      case 'center':
+        return { ...baseStyle, top: '50%' };
       case 'bottom':
-      default: return { ...baseStyle, top: '80%' };
+      default:
+        return { ...baseStyle, top: '80%' };
     }
   };
 
@@ -204,7 +209,7 @@ export const ReelPlayer: React.FC<ReelPlayerProps> = ({
               `}
               style={{
                 fontSize: `${subtitleFontSize}px`,
-                color: isActive ? '#FFFFFF' : (isPast ? subtitleColor : `${subtitleColor}99`),
+                color: isActive ? '#FFFFFF' : isPast ? subtitleColor : `${subtitleColor}99`,
                 textShadow: isActive
                   ? '0 0 30px rgba(255, 255, 255, 0.4), 2px 2px 0px rgba(0,0,0,0.8)'
                   : '1px 1px 0px rgba(0,0,0,0.8)',
@@ -222,7 +227,7 @@ export const ReelPlayer: React.FC<ReelPlayerProps> = ({
   };
 
   // --- Messaging Helper ---
-  const postMessageToIframe = (message: any) => {
+  const postMessageToIframe = (message: { type: 'play' | 'pause' } | { type: 'timeupdate'; time: number }) => {
     if (iframeRef.current && iframeRef.current.contentWindow) {
       iframeRef.current.contentWindow.postMessage(message, '*');
     }
@@ -267,8 +272,8 @@ export const ReelPlayer: React.FC<ReelPlayerProps> = ({
           if (!videoRef.current.paused) {
             const playPromise = audio.play();
             if (playPromise !== undefined) {
-              playPromise.catch(error => {
-                console.warn("Auto-play prevented (Audio):", error);
+              playPromise.catch((error) => {
+                console.warn('Auto-play prevented (Audio):', error);
               });
             }
           }
@@ -281,7 +286,6 @@ export const ReelPlayer: React.FC<ReelPlayerProps> = ({
       }
     }
   }, [bgMusicUrl]);
-
 
   // --- Sync Logic (High Frequency Loop) ---
   useEffect(() => {
@@ -306,7 +310,7 @@ export const ReelPlayer: React.FC<ReelPlayerProps> = ({
         // Force play if video is playing but audio isn't (and audio exists)
         else if (audioRef.current && bgMusicUrl && audioRef.current.paused && video.readyState >= 3) {
           audioRef.current.currentTime = time;
-          audioRef.current.play().catch(() => { });
+          audioRef.current.play().catch(() => {});
         }
 
         if (onTimeUpdate) {
@@ -348,7 +352,7 @@ export const ReelPlayer: React.FC<ReelPlayerProps> = ({
         audio.pause();
         audio.currentTime = 0;
       }
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
         mediaRecorderRef.current.stop();
         setIsRecording(false);
       }
@@ -365,7 +369,7 @@ export const ReelPlayer: React.FC<ReelPlayerProps> = ({
     const handleSeeked = () => {
       handleTimeUpdate();
       if (audio) audio.currentTime = video.currentTime;
-    }
+    };
 
     video.addEventListener('play', handlePlay);
     video.addEventListener('pause', handlePause);
@@ -395,10 +399,10 @@ export const ReelPlayer: React.FC<ReelPlayerProps> = ({
       setIsPlaying(false);
       postMessageToIframe({ type: 'pause' });
     } else {
-      video.play().catch(e => console.warn("Video play failed", e));
+      video.play().catch((e) => console.warn('Video play failed', e));
       if (audio && audio.src) {
         audio.currentTime = video.currentTime;
-        audio.play().catch(e => console.warn("Audio play failed", e));
+        audio.play().catch((e) => console.warn('Audio play failed', e));
       }
       setIsPlaying(true);
       postMessageToIframe({ type: 'play' });
@@ -411,12 +415,12 @@ export const ReelPlayer: React.FC<ReelPlayerProps> = ({
       videoRef.current.play();
 
       // Force Iframe Reload
-      setIframeKey(prev => prev + 1);
+      setIframeKey((prev) => prev + 1);
 
       // Reset Audio
       if (audioRef.current) {
         audioRef.current.currentTime = 0;
-        audioRef.current.play().catch(() => { });
+        audioRef.current.play().catch(() => {});
       }
     }
   };
@@ -424,17 +428,11 @@ export const ReelPlayer: React.FC<ReelPlayerProps> = ({
   // --- Recording Logic ---
   const getSupportedMimeType = () => {
     if (typeof MediaRecorder === 'undefined') return '';
-    const types = [
-      'video/webm;codecs=vp9',
-      'video/webm;codecs=vp8',
-      'video/webm',
-      'video/mp4'
-    ];
-    return types.find(type => MediaRecorder.isTypeSupported(type)) || '';
+    const types = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm', 'video/mp4'];
+    return types.find((type) => MediaRecorder.isTypeSupported(type)) || '';
   };
 
   // --- Nuclear Fix: Canvas Proxy for Video Capture REMOVED (Causing black visuals)
-
 
   const startRecording = async () => {
     try {
@@ -447,28 +445,32 @@ export const ReelPlayer: React.FC<ReelPlayerProps> = ({
         mimeType = 'video/webm;codecs=vp8'; // Reliable fallback
       }
 
-      const stream = await navigator.mediaDevices.getDisplayMedia({
+      const captureOptions: DisplayMediaStreamOptions & { preferCurrentTab: boolean } = {
         video: {
-          displaySurface: "browser",
+          displaySurface: 'browser',
           frameRate: 60,
           width: { ideal: 2160 },
-          height: { ideal: 3840 },
+          height: { ideal: 3840 }
         },
         audio: {
           echoCancellation: false,
           noiseSuppression: false,
-          autoGainControl: false,
+          autoGainControl: false
         },
-        preferCurrentTab: true,
-      } as any);
+        preferCurrentTab: true
+      };
+      const stream = await navigator.mediaDevices.getDisplayMedia(captureOptions);
 
       try {
-        if ('CropTarget' in window) {
+        if (window.CropTarget) {
           const videoTrack = stream.getVideoTracks()[0];
-          const target = await (window as any).CropTarget.fromElement(playerDiv);
-          await (videoTrack as any).cropTo(target);
+          const target = await window.CropTarget.fromElement(playerDiv);
+          if (!videoTrack || !hasCropTo(videoTrack)) throw new Error('Region capture is unavailable');
+          await videoTrack.cropTo(target);
         }
-      } catch (e) { console.warn("Crop failed", e); }
+      } catch (e) {
+        console.warn('Crop failed', e);
+      }
 
       // Use a "Master Grade" 50Mbps bitrate
       const recorder = new MediaRecorder(stream, {
@@ -483,26 +485,26 @@ export const ReelPlayer: React.FC<ReelPlayerProps> = ({
 
       recorder.onstop = () => {
         const fileExt = mimeType.includes('mp4') ? 'mp4' : 'webm';
-        const blob = new Blob(chunks, { type: mimeType.split(';')[0] });
+        const blob = new Blob(chunks, { type: mimeType.split(';')[0] ?? '' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
         const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
         a.download = `reel-export-${Date.now()}.${ext}`;
         a.click();
-        stream.getTracks().forEach(track => track.stop());
+        stream.getTracks().forEach((track) => track.stop());
         setIsRecording(false);
       };
 
       if (videoRef.current) {
         videoRef.current.pause();
         videoRef.current.currentTime = 0;
-        setIframeKey(prev => prev + 1);
+        setIframeKey((prev) => prev + 1);
 
         setIsRecording(true);
 
         // 1. Give the browser a moment to settle the high-res layout
-        await new Promise(r => setTimeout(r, 1200));
+        await new Promise((r) => setTimeout(r, 1200));
 
         // 2. Start recorder with small timeslices (prevents buffer stall)
         recorder.start(100);
@@ -511,31 +513,31 @@ export const ReelPlayer: React.FC<ReelPlayerProps> = ({
         // 3. Play video only after recorder has established a stream
         setTimeout(() => {
           if (videoRef.current) {
-            videoRef.current.play().catch(e => console.warn(e));
+            videoRef.current.play().catch((e) => console.warn(e));
           }
         }, 400);
       }
-
     } catch (err) {
-      console.error("Export Failed", err);
+      console.error('Export Failed', err);
       setIsRecording(false);
     }
   };
 
   const stopRecording = () => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
       mediaRecorderRef.current.stop();
     }
   };
 
   // Expose to window for automation/debug
   useEffect(() => {
-    (window as any).stopRecording = stopRecording;
+    window.stopRecording = stopRecording;
   }, []);
 
   return (
-    <div className={`flex flex-col items-center justify-center ${fullScreenMode ? 'fixed inset-0 z-50 bg-black' : 'h-full'}`}>
-
+    <div
+      className={`flex flex-col items-center justify-center ${fullScreenMode ? 'fixed inset-0 z-50 bg-black' : 'h-full'}`}
+    >
       <div
         id="recording-target"
         className="relative bg-black overflow-hidden shadow-2xl border border-gray-800 rounded-none"
@@ -548,10 +550,7 @@ export const ReelPlayer: React.FC<ReelPlayerProps> = ({
           margin: '0 auto'
         }}
       >
-        <div
-          className="absolute top-0 left-0 w-full overflow-hidden bg-gray-900"
-          style={layoutStyles.htmlContainer}
-        >
+        <div className="absolute top-0 left-0 w-full overflow-hidden bg-gray-900" style={layoutStyles.htmlContainer}>
           <iframe
             key={iframeKey} // Force Re-render on key change
             ref={iframeRef}
@@ -578,10 +577,7 @@ export const ReelPlayer: React.FC<ReelPlayerProps> = ({
             onEnded={stopRecording}
           />
           {/* Background Music - Hidden */}
-          <audio
-            ref={audioRef}
-            loop
-          />
+          <audio ref={audioRef} loop />
         </div>
 
         {currentCaption && (
@@ -597,13 +593,20 @@ export const ReelPlayer: React.FC<ReelPlayerProps> = ({
 
         {!fullScreenMode && !isRecording && (
           <div className="absolute bottom-4 left-0 w-full px-4 flex items-center justify-between z-50 opacity-0 hover:opacity-100 transition-opacity">
-            <button onClick={togglePlay} className="p-2 bg-white/20 hover:bg-white/40 backdrop-blur rounded-full text-white">
+            <button
+              onClick={togglePlay}
+              className="p-2 bg-white/20 hover:bg-white/40 backdrop-blur rounded-full text-white"
+            >
               {isPlaying ? <Pause size={20} /> : <Play size={20} />}
             </button>
             <span className="text-xs font-mono text-white/80 bg-black/40 px-2 py-1 rounded">
               {currentTime.toFixed(1)}s / {duration.toFixed(1)}s
             </span>
-            <button onClick={restart} className="p-2 bg-white/20 hover:bg-white/40 backdrop-blur rounded-full text-white" title="Restart & Reload HTML">
+            <button
+              onClick={restart}
+              className="p-2 bg-white/20 hover:bg-white/40 backdrop-blur rounded-full text-white"
+              title="Restart & Reload HTML"
+            >
               <RefreshCw size={20} />
             </button>
           </div>
@@ -667,7 +670,8 @@ export const ReelPlayer: React.FC<ReelPlayerProps> = ({
                 <Monitor size={14} className="text-purple-400" /> Recommendation:
               </h4>
               <p className="text-xs text-gray-400">
-                Use <strong>OBS Studio</strong> or your system's screen recorder to capture the playback in high quality.
+                Use <strong>OBS Studio</strong> or your system's screen recorder to capture the playback in high
+                quality.
               </p>
             </div>
 
@@ -706,9 +710,16 @@ export const ReelPlayer: React.FC<ReelPlayerProps> = ({
       )}
 
       <div className="mt-2 text-gray-500 text-sm">
-        {!isRecording && fullScreenMode && "Press ESC to exit fullscreen"}
-        {isRecording && "Recording in progress... content will auto-download on finish."}
+        {!isRecording && fullScreenMode && 'Press ESC to exit fullscreen'}
+        {isRecording && 'Recording in progress... content will auto-download on finish.'}
       </div>
     </div>
   );
 };
+
+interface RegionCaptureTrack extends MediaStreamTrack {
+  cropTo(target: object): Promise<void>;
+}
+function hasCropTo(track: MediaStreamTrack): track is RegionCaptureTrack {
+  return 'cropTo' in track && typeof track.cropTo === 'function';
+}

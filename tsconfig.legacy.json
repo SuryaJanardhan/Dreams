@@ -1,0 +1,26 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowJs": false,
+    "checkJs": false,
+    "noEmitOnError": true,
+    "outDir": "dist-legacy",
+    "moduleDetection": "force",
+    "useDefineForClassFields": false
+  },
+  "include": [
+    "src/config/**/*.ts",
+    "src/utils/**/*.ts",
+    "src/services/**/*.ts",
+    "src/controllers/**/*.ts",
+    "src/middleware/**/*.ts",
+    "src/routes/**/*.ts",
+    "src/compat/**/*.ts",
+    "src/main_automation.ts",
+    "bin/**/*.ts",
+    "test/**/*.ts",
+    "archive/**/*.ts",
+    "scripts/**/*.ts"
+  ],
+  "exclude": ["node_modules", "dist", "dist-legacy", ".migration-baseline"]
+}

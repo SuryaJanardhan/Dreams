@@ -1,0 +1,1532 @@
+import { truthy } from "../compat/guards.js";
+import { present } from "../compat/guards.js";
+import type { LegacyPostResult } from "../compat/contracts.js";
+import { failureInfo, providerMessage } from "../compat/errors.js";
+import logger = require("../config/logger.js");
+import fs = require("fs");
+import path = require("path");
+import axios = require("axios");
+import { google } from "googleapis";
+import { createClient } from "@supabase/supabase-js";
+
+// Load environment variables
+require("dotenv").config();
+
+// Supabase configuration
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const SUPABASE_BUCKET = process.env.SUPABASE_BUCKET || "videos";
+
+// Initialize Supabase client
+const supabase = createClient(
+  SUPABASE_URL ?? "",
+  SUPABASE_SERVICE_ROLE_KEY ?? "",
+  {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  },
+);
+
+/**
+ * Pick Instagram reel thumbnail frame (milliseconds).
+ * Uses explicit env var first, otherwise the midpoint of the cover intro duration.
+ */
+const getInstagramThumbOffsetMs = () => {
+  const raw = process.env.INSTAGRAM_REEL_THUMB_OFFSET_MS;
+  if (raw !== undefined && raw !== null && raw !== "") {
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed) && parsed >= 0) {
+      return Math.round(parsed);
+    }
+    logger.warn(
+      `⚠️ Invalid INSTAGRAM_REEL_THUMB_OFFSET_MS='${raw}', falling back to cover intro midpoint.`,
+    );
+  }
+
+  const coverIntroSec = Number(process.env.COVER_INTRO_DURATION_SEC || "1");
+  const safeCoverIntroSec =
+    Number.isFinite(coverIntroSec) && coverIntroSec > 0 ? coverIntroSec : 1;
+  return Math.round((safeCoverIntroSec * 1000) / 2);
+};
+
+/**
+ * Build YouTube OAuth client and force a token refresh preflight.
+ * This makes refresh-token failures explicit before upload starts.
+ */
+const createYouTubeOAuthClient = async () => {
+  let clientId = process.env.GOOGLE_CLIENT_ID;
+  let clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+
+  // Fallback for users who only configured GOOGLE_CREDENTIALS JSON.
+  if ((!clientId || !clientSecret) && process.env.GOOGLE_CREDENTIALS) {
+    try {
+      const creds = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+      clientId = clientId || creds.client_id;
+      clientSecret = clientSecret || creds.client_secret;
+    } catch (error) {
+      const caughtDetails0 = failureInfo(error);
+
+      logger.warn(
+        "⚠️ GOOGLE_CREDENTIALS is not valid JSON; cannot fallback for YouTube OAuth client.",
+      );
+    }
+  }
+
+  const refreshToken = process.env.YOUTUBE_REFRESH_TOKEN;
+
+  if (!clientId || !clientSecret || !refreshToken) {
+    throw new Error(
+      "Missing YouTube OAuth env values. Required: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, YOUTUBE_REFRESH_TOKEN",
+    );
+  }
+
+  const oauth2Client = new google.auth.OAuth2(clientId, clientSecret);
+  oauth2Client.setCredentials({ refresh_token: refreshToken });
+
+  // Log when library rotates/updates access tokens.
+  oauth2Client.on("tokens", (tokens) => {
+    if (tokens.access_token) {
+      logger.info("🔄 YouTube OAuth access token refreshed automatically.");
+    }
+    if (tokens.refresh_token) {
+      logger.warn(
+        "⚠️ Google returned a new refresh token. Update YOUTUBE_REFRESH_TOKEN to avoid future token invalidation.",
+      );
+    }
+  });
+
+  // Force preflight refresh so invalid refresh tokens fail early with a clear error.
+  try {
+    await oauth2Client.getAccessToken();
+    logger.info("✅ YouTube OAuth refresh-token preflight passed.");
+  } catch (error) {
+    const caughtDetails1 = failureInfo(error);
+
+    const apiMessage =
+      providerMessage(caughtDetails1.response?.data) || caughtDetails1.message;
+    throw new Error(`YouTube OAuth refresh failed: ${apiMessage}`);
+  }
+
+  return oauth2Client;
+};
+
+/**
+ * Generate hashtags and captions for social media
+ */
+const generateSocialMediaContent = (title: string, description: string) => {
+  // Generate relevant hashtags
+  const baseHashtags = [
+    "#education",
+    "#learning",
+    "#knowledge",
+    "#facts",
+    "#educational",
+    "#shorts",
+    "#viral",
+    "#trending",
+    "#india",
+    "#informative",
+  ];
+
+  // Extract topic-specific hashtags from title and description
+  const text = `${title} ${description}`.toLowerCase();
+  const topicHashtags = [];
+
+  // Add topic-specific hashtags based on content
+  if (text.includes("science")) topicHashtags.push("#science", "#scientific");
+  if (text.includes("tech")) topicHashtags.push("#technology", "#tech");
+  if (text.includes("history")) topicHashtags.push("#history", "#historical");
+  if (text.includes("space")) topicHashtags.push("#space", "#astronomy");
+  if (text.includes("health")) topicHashtags.push("#health", "#wellness");
+
+  const allHashtags = [...baseHashtags, ...topicHashtags].slice(0, 15);
+
+  // For fallback, create a simple summary instead of using conversation
+  const simpleSummary = `Learn about ${title.toLowerCase()} in this educational video. Discover key concepts, practical applications, and important insights that will help you understand this topic better. Perfect for students and anyone interested in expanding their knowledge.`;
+
+  const youtubeDescription = `🚀 ${simpleSummary}
+
+📌 What You'll Learn:
+• ${title
+    .toLowerCase()
+    .split(" ")
+    .slice(0, 3)
+    .join(" ")} fundamentals and concepts
+• Practical applications in real-world scenarios
+• Step-by-step implementation guide
+• Best practices and common pitfalls
+• Advanced techniques and optimization tips
+
+🎯 Key Benefits:
+• Understand complex concepts simply
+• Apply knowledge to your projects
+• Stay updated with latest trends
+• Learn from practical examples
+• Get expert insights and tips
+
+💡 Learning Outcomes:
+• Master ${title.toLowerCase()} fundamentals
+• Build confidence in implementation
+• Solve real-world problems effectively
+• Stay ahead in your field
+• Create innovative solutions
+
+🔥 Don't forget to:
+👍 Like this video if you learned something new
+🔔 Subscribe for more educational content
+💬 Share your thoughts in the comments
+🔗 Check out related videos in the description
+
+${allHashtags.join(" ")}`;
+
+  const instagramCaption = `${title}
+
+📌 Key Takeaways:
+• ${title.toLowerCase().split(" ").slice(0, 3).join(" ")} fundamentals explained
+• Practical applications you can implement
+• Important concepts for your projects
+• Real-world use cases and examples
+• Best practices and tips
+
+🤔 What did you learn? Share in comments!
+
+💡 Like & Share if you found this helpful!
+
+${allHashtags.join(" ")}`;
+
+  return {
+    youtube: {
+      title: title.length > 55 ? title.substring(0, 50) + "..." : title,
+      description: youtubeDescription,
+      tags: allHashtags.map((h) => h.replace("#", "")).slice(0, 10),
+      hashtags: allHashtags.join(" "),
+    },
+    instagram: {
+      caption: instagramCaption,
+      hashtags: allHashtags.join(" "),
+    },
+  };
+};
+
+/**
+ * Generate AI-powered social media content using Gemini
+ */
+const generateAISocialMediaContent = async (
+  title: string,
+  description: string,
+  scriptContent = "",
+) => {
+  try {
+    // First, generate educational explanation about the topic
+    const topicExplanation = await generateTopicExplanation(
+      title,
+      description,
+      scriptContent,
+    );
+
+    // Get topic-related emoji
+    const topicEmoji = getTopicEmoji(title, description);
+
+    // Generate platform-specific hashtags (minimum 10 each)
+    const text = `${title} ${description}`.toLowerCase();
+
+    // YouTube hashtags (educational focus)
+    const youtubeHashtags = [
+      "#education",
+      "#learning",
+      "#knowledge",
+      "#educational",
+      "#tutorial",
+      "#howto",
+      "#explained",
+      "#guide",
+      "#tips",
+      "#facts",
+    ];
+
+    // Instagram hashtags (visual/social focus)
+    const instagramHashtags = [
+      "#instagram",
+      "#instadaily",
+      "#instavideo",
+      "#reels",
+      "#reel",
+      "#viral",
+      "#trending",
+      "#fyp",
+      "#explore",
+      "#discover",
+    ];
+
+    // Facebook hashtags (community focus)
+    const facebookHashtags = [
+      "#facebook",
+      "#community",
+      "#share",
+      "#learn",
+      "#education",
+      "#knowledge",
+      "#tips",
+      "#facts",
+      "#viral",
+      "#trending",
+    ];
+
+    // Add topic-specific hashtags
+    if (text.includes("science")) {
+      youtubeHashtags.push("#science", "#scientific");
+      instagramHashtags.push("#science", "#stem");
+      facebookHashtags.push("#science", "#research");
+    }
+    if (text.includes("tech")) {
+      youtubeHashtags.push("#technology", "#tech");
+      instagramHashtags.push("#tech", "#innovation");
+      facebookHashtags.push("#technology", "#digital");
+    }
+    if (text.includes("ai")) {
+      youtubeHashtags.push("#ai", "#artificialintelligence");
+      instagramHashtags.push("#ai", "#machinelearning");
+      facebookHashtags.push("#ai", "#future");
+    }
+    if (text.includes("data")) {
+      youtubeHashtags.push("#datascience", "#analytics");
+      instagramHashtags.push("#data", "#insights");
+      facebookHashtags.push("#data", "#analytics");
+    }
+
+    const youtubeHashtagString = youtubeHashtags.slice(0, 10).join(" ");
+    const instagramHashtagString = instagramHashtags.slice(0, 10).join(" ");
+    const facebookHashtagString = facebookHashtags.slice(0, 10).join(" ");
+
+    // Create YouTube description with comprehensive explanation
+    const youtubeDescription = `${topicEmoji} ${title}
+
+${topicExplanation}
+
+🔥 Don't forget to:
+👍 Like this video if you learned something new!
+🔔 Subscribe for more educational content like this!
+💬 Share your thoughts in the comments below!
+🔗 Save this video to watch again later!
+
+${youtubeHashtagString}`;
+
+    // Create Instagram caption with title + explanation + calls-to-action
+    const instagramCaption = `${topicEmoji} ${title}
+
+${topicExplanation}
+
+❤️ Like & Follow for more educational content!
+🔄 Share this with friends who need to learn this!
+💬 Drop your questions in the comments below!
+📚 Save this post for future reference!
+
+${instagramHashtagString}`;
+
+    // Create Facebook caption with title + explanation + calls-to-action
+    const facebookCaption = `${topicEmoji} ${title}
+
+${topicExplanation}
+
+👍 Like this post if you found it helpful!
+🔄 Share this with your friends and family!
+💬 What are your thoughts? Comment below!
+👥 Tag someone who would benefit from this knowledge!
+
+${facebookHashtagString}`;
+
+    return {
+      youtube: {
+        title: title.length > 55 ? title.substring(0, 50) + "..." : title,
+        description: youtubeDescription,
+        tags: youtubeHashtags.map((h) => h.replace("#", "")).slice(0, 10),
+        hashtags: youtubeHashtagString,
+      },
+      instagram: {
+        caption: instagramCaption,
+        hashtags: instagramHashtagString,
+      },
+      facebook: {
+        caption: facebookCaption,
+        hashtags: facebookHashtagString,
+      },
+    };
+  } catch (error) {
+    const caughtDetails2 = failureInfo(error);
+
+    logger.error(
+      "❌ AI content generation failed, using template:",
+      caughtDetails2.message,
+    );
+    return generateSocialMediaContent(title, description);
+  }
+};
+
+/**
+ * Upload video to YouTube
+ */
+const uploadToYouTube = async (
+  videoPath: string,
+  title: string,
+  description: string,
+) => {
+  try {
+    logger.info("📺 Starting YouTube upload...");
+    logger.info(`📹 Video path: ${videoPath}`);
+    logger.info(`📝 Title: ${title}`);
+
+    const oauth2Client = await createYouTubeOAuthClient();
+
+    // Create YouTube client
+    const youtube = google.youtube({
+      version: "v3",
+      auth: oauth2Client,
+    });
+
+    // Generate unified caption for all platforms
+    const unifiedContent = await generateUnifiedSocialMediaCaption(title);
+
+    // For YouTube Shorts: use title + #shorts + unified caption (no separate description)
+    const youtubeTitle =
+      title.length > 55 ? title.substring(0, 50) + "..." : title;
+    const youtubeDescription = `${unifiedContent.caption}\n\n#shorts`;
+
+    // Extract hashtags for tags (remove # and limit to 10)
+    const tags = unifiedContent.hashtags
+      .split(" ")
+      .filter((tag: string) => tag.startsWith("#"))
+      .map((tag: string) => tag.substring(1))
+      .slice(0, 10);
+
+    logger.info(`🏷️ Final tags: ${tags.join(", ")}`);
+    logger.info(`📹 Final title: ${youtubeTitle}`);
+    logger.info(`📝 Description includes #shorts hashtag`);
+
+    const response = await youtube.videos.insert({
+      part: ["snippet", "status"],
+      requestBody: {
+        snippet: {
+          title: youtubeTitle,
+          description: youtubeDescription,
+          tags: tags,
+          categoryId: "27", // Education category
+        },
+        status: {
+          privacyStatus: "public",
+        },
+      },
+      media: {
+        body: fs.createReadStream(videoPath),
+      },
+    });
+
+    const videoId = response.data.id;
+    const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+
+    logger.info(`✅ YouTube upload successful: ${videoUrl}`);
+
+    return {
+      success: true as const,
+      url: videoUrl,
+      videoId: videoId,
+      title: youtubeTitle,
+      caption: unifiedContent.caption, // Use the unified caption for consistency
+    };
+  } catch (error) {
+    const caughtDetails3 = failureInfo(error);
+
+    logger.error("❌ YouTube upload failed:", caughtDetails3.message);
+    if (caughtDetails3.response) {
+      logger.error("Response data:", caughtDetails3.response.data);
+    }
+    return {
+      success: false as const,
+      error: caughtDetails3.message,
+    };
+  }
+};
+
+/**
+ * Upload video to Instagram (using Instagram Graph API for reels)
+ */
+const uploadToInstagram = async (
+  videoPath: string,
+  title: string,
+  description: string,
+) => {
+  let uploadedFileName = null; // Changed from filebaseFileName to be more descriptive
+
+  try {
+    logger.info("📱 Starting Instagram upload...");
+
+    // Generate unified caption for all platforms
+    const unifiedContent = await generateUnifiedSocialMediaCaption(title);
+    const finalCaption = unifiedContent.caption;
+
+    logger.info(
+      `📝 Using unified caption for Instagram (${finalCaption.length} chars)`,
+    );
+
+    // Required environment variables
+    const accessToken = process.env.INSTAGRAM_ACCESS_TOKEN;
+    const accountId = process.env.INSTAGRAM_ACCOUNT_ID;
+
+    if (!accessToken || !accountId) {
+      throw new Error(
+        "INSTAGRAM_ACCESS_TOKEN and INSTAGRAM_ACCOUNT_ID environment variables are required",
+      );
+    }
+
+    // Step 1: Upload to Supabase and get public link
+    const supabaseResult = await uploadToSupabaseAndGetLink(
+      videoPath,
+      "Instagram Reel",
+    );
+    if (!supabaseResult.success) {
+      throw new Error(`Supabase upload failed: ${supabaseResult.error}`);
+    }
+
+    uploadedFileName = supabaseResult.fileName;
+    const publicVideoUrl = supabaseResult.publicLink;
+
+    logger.info(`🔗 Using Supabase link for Instagram: ${publicVideoUrl}`);
+
+    // Step 2: Create Reels Container using Instagram Graph API v23.0
+    const containerUrl = `https://graph.facebook.com/v23.0/${accountId}/media`;
+    const thumbOffsetMs = getInstagramThumbOffsetMs();
+    const containerParams = {
+      media_type: "REELS",
+      video_url: publicVideoUrl,
+      caption: finalCaption,
+      thumb_offset: thumbOffsetMs,
+      access_token: accessToken,
+    };
+
+    logger.info(
+      `📦 Creating Reels container (thumb_offset=${thumbOffsetMs}ms)...`,
+    );
+    const containerResponse = await axios.post(containerUrl, containerParams);
+    const containerId = containerResponse.data.id;
+    logger.info(`✅ Reels container created. Container ID: ${containerId}`);
+
+    // Step 2: Wait for Instagram to process the media
+    logger.info("⏳ Waiting for Instagram to process media (50 seconds)...");
+    await new Promise<void>((resolve) => setTimeout(resolve, 50000));
+
+    // Step 3: Publish the Reels container with retry logic
+    const publishUrl = `https://graph.facebook.com/v23.0/${accountId}/media_publish`;
+    const publishParams = {
+      creation_id: containerId,
+      access_token: accessToken,
+    };
+
+    let publishResponse;
+    let retryCount = 0;
+    const maxRetries = 3;
+
+    while (retryCount < maxRetries) {
+      try {
+        logger.info(
+          `🚀 Publishing Instagram Reel (attempt ${
+            retryCount + 1
+          }/${maxRetries})...`,
+        );
+        publishResponse = await axios.post(publishUrl, publishParams);
+
+        // Check if publish was successful
+        if (publishResponse.data.id) {
+          break; // Success, exit retry loop
+        }
+      } catch (publishError) {
+        const caughtDetails4 = failureInfo(publishError);
+
+        retryCount++;
+        if (retryCount < maxRetries) {
+          logger.warn(
+            `⚠️ Publish attempt ${retryCount} failed, retrying in 35 seconds...`,
+          );
+          logger.warn(
+            `Error: ${
+              providerMessage(caughtDetails4.response?.data) ||
+              caughtDetails4.message
+            }`,
+          );
+          await new Promise<void>((resolve) => setTimeout(resolve, 35000));
+        } else {
+          throw publishError; // Max retries reached, throw error
+        }
+      }
+    }
+
+    const mediaId = present(publishResponse, "publishResponse").data.id;
+    logger.info(`✅ Instagram Reel published. Media ID: ${mediaId}`);
+
+    // Step 4: Construct Instagram URL (API permalink has token issues)
+    const instagramUrl = `https://instagram.com/reel/${mediaId}`;
+
+    // Try to get official permalink, but use constructed URL as fallback
+    try {
+      const permalink = await getInstagramPermalink(mediaId, accessToken);
+      if (permalink) {
+        logger.info(`✅ Instagram upload successful: ${permalink}`);
+        return {
+          success: true as const,
+          url: permalink,
+          mediaId: mediaId,
+          caption: finalCaption,
+        };
+      }
+    } catch (error) {
+      const caughtDetails5 = failureInfo(error);
+
+      logger.warn(
+        `⚠️ Could not get official permalink, using constructed URL: ${caughtDetails5.message}`,
+      );
+    }
+
+    logger.info(`✅ Instagram upload successful: ${instagramUrl}`);
+
+    // Clean up Supabase file after successful Instagram upload
+    if (uploadedFileName) {
+      await deleteFromSupabase(uploadedFileName, SUPABASE_BUCKET);
+    }
+
+    return {
+      success: true as const,
+      url: instagramUrl,
+      mediaId: mediaId,
+      caption: finalCaption,
+    };
+  } catch (error) {
+    const caughtDetails6 = failureInfo(error);
+
+    logger.error("❌ Instagram upload failed:", caughtDetails6.message);
+    if (caughtDetails6.response) {
+      logger.error("Response status:", caughtDetails6.response.status);
+      logger.error("Response data:", caughtDetails6.response.data);
+    }
+
+    // Clean up Supabase file on error
+    if (uploadedFileName) {
+      logger.warn(
+        "🧹 Cleaning up Supabase file due to Instagram upload failure...",
+      );
+      await deleteFromSupabase(uploadedFileName, SUPABASE_BUCKET);
+    }
+
+    return {
+      success: false as const,
+      error: caughtDetails6.message,
+    };
+  }
+};
+
+/**
+ * Upload video to Instagram using a pre-uploaded Supabase URL
+ */
+const uploadToInstagramWithUrl = async (
+  videoUrl: string,
+  title: string,
+  description: string,
+) => {
+  try {
+    logger.info("📱 Starting Instagram upload with provided URL...");
+
+    // Generate unified caption for all platforms
+    const unifiedContent = await generateUnifiedSocialMediaCaption(title);
+    const finalCaption = unifiedContent.caption;
+
+    logger.info(
+      `📝 Using unified caption for Instagram (${finalCaption.length} chars)`,
+    );
+
+    // Required environment variables
+    const accessToken = process.env.INSTAGRAM_ACCESS_TOKEN;
+    const accountId = process.env.INSTAGRAM_ACCOUNT_ID;
+
+    if (!accessToken || !accountId) {
+      throw new Error(
+        "INSTAGRAM_ACCESS_TOKEN and INSTAGRAM_ACCOUNT_ID environment variables are required",
+      );
+    }
+
+    logger.info(`🔗 Using provided video URL for Instagram: ${videoUrl}`);
+
+    // Step 1: Create Reels Container using Instagram Graph API v23.0
+    const containerUrl = `https://graph.facebook.com/v23.0/${accountId}/media`;
+    const thumbOffsetMs = getInstagramThumbOffsetMs();
+    const containerParams = {
+      media_type: "REELS",
+      video_url: videoUrl,
+      caption: finalCaption,
+      thumb_offset: thumbOffsetMs,
+      access_token: accessToken,
+    };
+
+    logger.info(
+      `🎬 Creating Instagram Reels container (thumb_offset=${thumbOffsetMs}ms)...`,
+    );
+    const containerResponse = await axios.post(containerUrl, containerParams);
+    const containerId = containerResponse.data.id;
+
+    logger.info(
+      `✅ Instagram Reels container created. Container ID: ${containerId}`,
+    );
+
+    // Step 2: Wait for Instagram to process the media
+    logger.info("⏳ Waiting for Instagram to process media (40 seconds)...");
+    await new Promise<void>((resolve) => setTimeout(resolve, 40000));
+
+    // Step 3: Publish the Reels container with retry logic
+    const publishUrl = `https://graph.facebook.com/v23.0/${accountId}/media_publish`;
+    const publishParams = {
+      creation_id: containerId,
+      access_token: accessToken,
+    };
+
+    let publishResponse;
+    let retryCount = 0;
+    const maxRetries = 3;
+
+    while (retryCount < maxRetries) {
+      try {
+        logger.info(
+          `🚀 Publishing Instagram Reel (attempt ${
+            retryCount + 1
+          }/${maxRetries})...`,
+        );
+        publishResponse = await axios.post(publishUrl, publishParams);
+
+        // Check if publish was successful
+        if (publishResponse.data.id) {
+          break; // Success, exit retry loop
+        }
+      } catch (publishError) {
+        const caughtDetails7 = failureInfo(publishError);
+
+        retryCount++;
+        if (retryCount < maxRetries) {
+          logger.warn(
+            `⚠️ Publish attempt ${retryCount} failed, retrying in 25 seconds...`,
+          );
+          logger.warn(
+            `Error: ${
+              providerMessage(caughtDetails7.response?.data) ||
+              caughtDetails7.message
+            }`,
+          );
+          await new Promise<void>((resolve) => setTimeout(resolve, 25000));
+        } else {
+          throw publishError; // Max retries reached, throw error
+        }
+      }
+    }
+
+    const mediaId = present(publishResponse, "publishResponse").data.id;
+    logger.info(`✅ Instagram Reel published. Media ID: ${mediaId}`);
+
+    // Step 4: Construct Instagram URL (API permalink has token issues)
+    const instagramUrl = `https://instagram.com/reel/${mediaId}`;
+
+    // Try to get official permalink, but use constructed URL as fallback
+    try {
+      const permalink = await getInstagramPermalink(mediaId, accessToken);
+      if (permalink) {
+        logger.info(`✅ Instagram upload successful: ${permalink}`);
+        return {
+          success: true as const,
+          url: permalink,
+          mediaId: mediaId,
+          caption: finalCaption,
+        };
+      }
+    } catch (error) {
+      const caughtDetails8 = failureInfo(error);
+
+      logger.warn(
+        `⚠️ Could not get official permalink, using constructed URL: ${caughtDetails8.message}`,
+      );
+    }
+
+    logger.info(`✅ Instagram upload successful: ${instagramUrl}`);
+
+    return {
+      success: true as const,
+      url: instagramUrl,
+      mediaId: mediaId,
+      caption: finalCaption,
+    };
+  } catch (error) {
+    const caughtDetails9 = failureInfo(error);
+
+    logger.error("❌ Instagram upload failed:", caughtDetails9.message);
+    if (caughtDetails9.response) {
+      logger.error("Response status:", caughtDetails9.response.status);
+      logger.error("Response data:", caughtDetails9.response.data);
+    }
+
+    return {
+      success: false as const,
+      error: caughtDetails9.message,
+    };
+  }
+};
+
+/**
+ * Upload video to Facebook page
+ */
+const uploadToFacebook = async (
+  videoPath: string,
+  title: string,
+  description: string,
+) => {
+  let uploadedFileName = null;
+
+  try {
+    logger.info("📘 Starting Facebook upload...");
+
+    // Generate unified caption for all platforms
+    const unifiedContent = await generateUnifiedSocialMediaCaption(title);
+    const finalCaption = unifiedContent.caption;
+
+    logger.info(
+      `📝 Using unified caption for Facebook (${finalCaption.length} chars)`,
+    );
+
+    // Required environment variables
+    const accessToken = process.env.FACEBOOK_ACCESS_TOKEN;
+    const pageId = process.env.FACEBOOK_PAGE_ID;
+
+    if (!accessToken || !pageId) {
+      throw new Error(
+        "FACEBOOK_ACCESS_TOKEN and FACEBOOK_PAGE_ID environment variables are required",
+      );
+    }
+
+    // Step 1: Upload to Supabase and get public link
+    const supabaseResult = await uploadToSupabaseAndGetLink(
+      videoPath,
+      "Facebook Video",
+    );
+    if (!supabaseResult.success) {
+      throw new Error(`Supabase upload failed: ${supabaseResult.error}`);
+    }
+
+    uploadedFileName = supabaseResult.fileName;
+    const publicVideoUrl = supabaseResult.publicLink;
+
+    logger.info(`🔗 Using Supabase link for Facebook: ${publicVideoUrl}`);
+
+    // Step 2: Get page access token for posting
+    const pageTokenUrl = `https://graph.facebook.com/v23.0/${pageId}?fields=access_token&access_token=${accessToken}`;
+    const pageTokenResponse = await axios.get(pageTokenUrl);
+    const pageAccessToken = pageTokenResponse.data.access_token;
+
+    if (!pageAccessToken) {
+      throw new Error(
+        "Could not obtain page access token. Make sure you're a page admin.",
+      );
+    }
+
+    logger.info("🔑 Page access token obtained for posting");
+
+    // Step 3: Create video post using Facebook Graph API with PAGE access token
+    const postUrl = `https://graph.facebook.com/v23.0/${pageId}/videos`;
+    const postParams = {
+      file_url: publicVideoUrl,
+      description: finalCaption,
+      access_token: pageAccessToken, // Use page access token for posting
+    };
+
+    logger.info("📹 Publishing video to Facebook page...");
+    const postResponse = await axios.post(postUrl, postParams);
+    const postId = postResponse.data.id;
+
+    logger.info(`✅ Facebook video published. Post ID: ${postId}`);
+
+    // Step 4: Get the permalink using page access token
+    const permalinkUrl = `https://graph.facebook.com/v23.0/${postId}?fields=permalink_url&access_token=${pageAccessToken}`;
+    const permalinkResponse = await axios.get(permalinkUrl);
+    let facebookUrl = permalinkResponse.data.permalink_url;
+
+    // Ensure we have a complete URL
+    if (facebookUrl && !facebookUrl.startsWith("http")) {
+      facebookUrl = `https://facebook.com${facebookUrl}`;
+    } else if (!facebookUrl) {
+      facebookUrl = `https://facebook.com/${postId}`;
+    }
+
+    logger.info(`✅ Facebook upload successful: ${facebookUrl}`);
+
+    // Clean up Supabase file after successful Facebook upload
+    if (uploadedFileName) {
+      await deleteFromSupabase(uploadedFileName, SUPABASE_BUCKET);
+    }
+
+    return {
+      success: true as const,
+      url: facebookUrl,
+      postId: postId,
+      caption: finalCaption,
+    };
+  } catch (error) {
+    const caughtDetails10 = failureInfo(error);
+
+    logger.error("❌ Facebook upload failed:", caughtDetails10.message);
+    if (caughtDetails10.response) {
+      logger.error("Response status:", caughtDetails10.response.status);
+      logger.error("Response data:", caughtDetails10.response.data);
+    }
+
+    // Clean up Supabase file on error
+    if (uploadedFileName) {
+      logger.warn(
+        "🧹 Cleaning up Supabase file due to Facebook upload failure...",
+      );
+      await deleteFromSupabase(uploadedFileName, SUPABASE_BUCKET);
+    }
+
+    return {
+      success: false as const,
+      error: caughtDetails10.message,
+    };
+  }
+};
+
+/**
+ * Upload video to Facebook using a pre-uploaded Supabase URL
+ */
+const uploadToFacebookWithUrl = async (
+  videoUrl: string,
+  title: string,
+  description: string,
+) => {
+  let uploadedFileName = null;
+
+  try {
+    logger.info("📘 Starting Facebook upload with provided URL...");
+
+    // Generate unified caption for all platforms
+    const unifiedContent = await generateUnifiedSocialMediaCaption(title);
+    const finalCaption = unifiedContent.caption;
+
+    logger.info(
+      `📝 Using unified caption for Facebook (${finalCaption.length} chars)`,
+    );
+
+    // Required environment variables
+    const accessToken = process.env.FACEBOOK_ACCESS_TOKEN;
+    const pageId = process.env.FACEBOOK_PAGE_ID;
+
+    if (!accessToken || !pageId) {
+      throw new Error(
+        "FACEBOOK_ACCESS_TOKEN and FACEBOOK_PAGE_ID environment variables are required",
+      );
+    }
+
+    logger.info(`🔗 Using provided video URL for Facebook: ${videoUrl}`);
+
+    // Step 1: Get page access token for posting
+    const pageTokenUrl = `https://graph.facebook.com/v23.0/${pageId}?fields=access_token&access_token=${accessToken}`;
+    const pageTokenResponse = await axios.get(pageTokenUrl);
+    const pageAccessToken = pageTokenResponse.data.access_token;
+
+    if (!pageAccessToken) {
+      throw new Error(
+        "Could not obtain page access token. Make sure you're a page admin.",
+      );
+    }
+
+    logger.info("🔑 Page access token obtained for posting");
+
+    // Step 2: Create video post using Facebook Graph API with PAGE access token
+    const postUrl = `https://graph.facebook.com/v23.0/${pageId}/videos`;
+    const postParams = {
+      file_url: videoUrl,
+      description: finalCaption,
+      access_token: pageAccessToken, // Use page access token for posting
+    };
+
+    logger.info("📹 Publishing video to Facebook page...");
+    const postResponse = await axios.post(postUrl, postParams);
+    const postId = postResponse.data.id;
+
+    logger.info(`✅ Facebook video published. Post ID: ${postId}`);
+
+    // Step 3: Get the permalink using page access token
+    const permalinkUrl = `https://graph.facebook.com/v23.0/${postId}?fields=permalink_url&access_token=${pageAccessToken}`;
+    const permalinkResponse = await axios.get(permalinkUrl);
+    let facebookUrl = permalinkResponse.data.permalink_url;
+
+    // Ensure we have a complete URL
+    if (facebookUrl && !facebookUrl.startsWith("http")) {
+      facebookUrl = `https://facebook.com${facebookUrl}`;
+    } else if (!facebookUrl) {
+      facebookUrl = `https://facebook.com/${postId}`;
+    }
+
+    logger.info(`✅ Facebook upload successful: ${facebookUrl}`);
+
+    return {
+      success: true as const,
+      url: facebookUrl,
+      postId: postId,
+      caption: finalCaption,
+    };
+  } catch (error) {
+    const caughtDetails11 = failureInfo(error);
+
+    logger.error("❌ Facebook upload failed:", caughtDetails11.message);
+    if (caughtDetails11.response) {
+      logger.error("Response status:", caughtDetails11.response.status);
+      logger.error("Response data:", caughtDetails11.response.data);
+    }
+
+    return {
+      success: false as const,
+      error: caughtDetails11.message,
+    };
+  }
+};
+
+/**
+ * Upload video to both platforms
+ */
+const uploadToBothPlatforms = async (
+  videoPath: string,
+  title: string,
+  description: string,
+  scriptContent = "",
+) => {
+  let uploadedFileName = null;
+
+  try {
+    logger.info("🚀 Starting upload to YouTube, Instagram, and Facebook...");
+
+    // Generate unified caption for all platforms using Groq
+    const unifiedContent = await generateUnifiedSocialMediaCaption(title);
+    logger.info("🤖 Unified Groq-generated caption ready for all platforms");
+
+    // Step 1: Upload video to Supabase once (shared for Instagram and Facebook)
+    logger.info(
+      "☁️ Uploading video to Supabase (shared for Instagram & Facebook)...",
+    );
+    const supabaseResult = await uploadToSupabaseAndGetLink(
+      videoPath,
+      "Social Media Video",
+    );
+    if (!supabaseResult.success) {
+      throw new Error(`Supabase upload failed: ${supabaseResult.error}`);
+    }
+
+    uploadedFileName = supabaseResult.fileName;
+    const sharedVideoUrl = supabaseResult.publicLink;
+    logger.info(`✅ Video uploaded to Supabase: ${sharedVideoUrl}`);
+
+    const results: {
+      youtube: LegacyPostResult | null;
+      instagram: LegacyPostResult | null;
+      facebook: LegacyPostResult | null;
+    } = {
+      youtube: null,
+      instagram: null,
+      facebook: null,
+    };
+
+    // Upload to YouTube
+    try {
+      results.youtube = await uploadToYouTube(videoPath, title, description);
+    } catch (error) {
+      const caughtDetails12 = failureInfo(error);
+
+      logger.error("YouTube upload failed:", error);
+      results.youtube = {
+        success: false as const,
+        error: caughtDetails12.message,
+      };
+    }
+
+    // Upload to Instagram using shared Supabase URL
+    try {
+      results.instagram = await uploadToInstagramWithUrl(
+        sharedVideoUrl,
+        title,
+        description,
+      );
+    } catch (error) {
+      const caughtDetails13 = failureInfo(error);
+
+      logger.error("Instagram upload failed:", error);
+      results.instagram = {
+        success: false as const,
+        error: caughtDetails13.message,
+      };
+    }
+
+    // Upload to Facebook using shared Supabase URL
+    try {
+      results.facebook = await uploadToFacebookWithUrl(
+        sharedVideoUrl,
+        title,
+        description,
+      );
+    } catch (error) {
+      const caughtDetails14 = failureInfo(error);
+
+      logger.error("Facebook upload failed:", error);
+      results.facebook = {
+        success: false as const,
+        error: caughtDetails14.message,
+      };
+    }
+
+    const youtubeResult = present(results.youtube, "YouTube outcome");
+    const instagramResult = present(results.instagram, "Instagram outcome");
+    const facebookResult = present(results.facebook, "Facebook outcome");
+    const uploadSummary = {
+      success:
+        youtubeResult.success &&
+        instagramResult.success &&
+        facebookResult.success, // All three must succeed for "complete success"
+      partialSuccess:
+        (youtubeResult.success ||
+          instagramResult.success ||
+          facebookResult.success) &&
+        !(
+          youtubeResult.success &&
+          instagramResult.success &&
+          facebookResult.success
+        ), // At least one succeeded but not all
+      allFailed:
+        !youtubeResult.success &&
+        !instagramResult.success &&
+        !facebookResult.success, // All failed
+      youtube: youtubeResult,
+      instagram: instagramResult,
+      facebook: facebookResult,
+      youtubeUrl: youtubeResult.success ? youtubeResult.url : null,
+      instagramUrl: instagramResult.success ? instagramResult.url : null,
+      facebookUrl: facebookResult.success ? facebookResult.url : null,
+      successfulCount: [
+        youtubeResult.success,
+        instagramResult.success,
+        facebookResult.success,
+      ].filter(truthy).length,
+      totalCount: 3,
+    };
+
+    logger.info("📊 Upload summary:", {
+      success: uploadSummary.success,
+      partialSuccess: uploadSummary.partialSuccess,
+      allFailed: uploadSummary.allFailed,
+      successfulCount: uploadSummary.successfulCount,
+      youtube: youtubeResult.success,
+      instagram: instagramResult.success,
+      facebook: facebookResult.success,
+    });
+
+    // Clean up Supabase file ONLY if ALL uploads succeeded
+    if (uploadedFileName && uploadSummary.success) {
+      logger.info("🧹 Cleaning up Supabase file after complete success...");
+      await deleteFromSupabase(uploadedFileName, SUPABASE_BUCKET);
+    } else if (
+      uploadedFileName &&
+      (uploadSummary.partialSuccess || uploadSummary.allFailed)
+    ) {
+      logger.info(
+        "📁 Keeping Supabase file for potential retry (partial success or all failed)...",
+      );
+    }
+
+    return uploadSummary;
+  } catch (error) {
+    const caughtDetails15 = failureInfo(error);
+
+    logger.error("❌ Social media upload failed:", error);
+
+    // Clean up Supabase file on error (if it was uploaded)
+    if (uploadedFileName) {
+      logger.warn("🧹 Cleaning up Supabase file due to upload failure...");
+      await deleteFromSupabase(uploadedFileName, SUPABASE_BUCKET);
+    }
+
+    throw error;
+  }
+};
+
+/**
+ * Upload video to Supabase and get public link
+ */
+const uploadToSupabaseAndGetLink = async (videoPath: string, title: string) => {
+  try {
+    logger.info("☁️ Uploading video to Supabase...");
+
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+      throw new Error(
+        "SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables are required",
+      );
+    }
+
+    const fileName = `${title.replace(/[^a-zA-Z0-9]/g, "_")}_${Date.now()}.mp4`;
+    const fileBuffer = fs.readFileSync(videoPath);
+    const fileStats = fs.statSync(videoPath);
+
+    logger.info(`📁 Uploading file: ${fileName}`);
+    logger.info(
+      `📊 File size: ${(fileStats.size / (1024 * 1024)).toFixed(2)} MB`,
+    );
+
+    // Check file size limit (Supabase free tier limit is ~50MB)
+    const maxFileSizeMB = 50;
+    if (fileStats.size > maxFileSizeMB * 1024 * 1024) {
+      throw new Error(
+        `File size ${(fileStats.size / (1024 * 1024)).toFixed(
+          2,
+        )} MB exceeds Supabase limit of ${maxFileSizeMB} MB. ` +
+          `Consider compressing the video or using a different storage solution.`,
+      );
+    }
+
+    // Upload to Supabase Storage
+    const { data, error } = await supabase.storage
+      .from(SUPABASE_BUCKET)
+      .upload(fileName, fileBuffer, {
+        contentType: "video/mp4",
+        upsert: false,
+      });
+
+    if (error) {
+      logger.error(`❌ Supabase upload failed: ${error.message}`);
+      logger.error("Error details:", JSON.stringify(error, null, 2));
+      throw new Error(`Supabase upload failed: ${error.message}`);
+    }
+
+    logger.info(`✅ File uploaded to Supabase. Key: ${fileName}`);
+
+    // Get public URL
+    const { data: urlData } = supabase.storage
+      .from(SUPABASE_BUCKET)
+      .getPublicUrl(fileName);
+
+    const publicLink = urlData.publicUrl;
+    logger.info(`🔗 Public link: ${publicLink}`);
+
+    return {
+      success: true as const,
+      fileName: fileName,
+      publicLink: publicLink,
+      bucket: SUPABASE_BUCKET,
+    };
+  } catch (error) {
+    const caughtDetails16 = failureInfo(error);
+
+    logger.error("❌ Supabase upload failed:", caughtDetails16.message);
+    return {
+      success: false as const,
+      error: caughtDetails16.message,
+    };
+  }
+};
+
+/**
+ * Delete file from Supabase
+ */
+const deleteFromSupabase = async (fileName: string, bucket: string) => {
+  try {
+    logger.info(`🗑️ Deleting file from Supabase: ${fileName}`);
+
+    const { data, error } = await supabase.storage
+      .from(bucket)
+      .remove([fileName]);
+
+    if (error) {
+      throw new Error(`Supabase delete failed: ${error.message}`);
+    }
+
+    logger.info("✅ File deleted from Supabase");
+    return { success: true as const };
+  } catch (error) {
+    const caughtDetails17 = failureInfo(error);
+
+    logger.error("❌ Failed to delete from Supabase:", caughtDetails17.message);
+    return { success: false as const, error: caughtDetails17.message };
+  }
+};
+
+/**
+ * Get Instagram permalink using media ID
+ */
+const getInstagramPermalink = async (
+  mediaId: string,
+  instagramAccessToken: string,
+) => {
+  try {
+    logger.info(`🔗 Getting Instagram permalink for media ID: ${mediaId}`);
+
+    // Use Facebook access token for permalink API (Instagram token doesn't work)
+    const facebookAccessToken = process.env.FACEBOOK_ACCESS_TOKEN;
+    if (!facebookAccessToken) {
+      logger.warn(
+        "⚠️ No Facebook access token available for permalink, using constructed URL",
+      );
+      return `https://instagram.com/reel/${mediaId}`;
+    }
+
+    const url = `https://graph.facebook.com/v18.0/${mediaId}?fields=permalink&access_token=${facebookAccessToken}`;
+    const response = await axios.get(url);
+
+    const permalink = response.data.permalink;
+    logger.info(`✅ Instagram permalink: ${permalink}`);
+
+    return permalink;
+  } catch (error) {
+    const caughtDetails18 = failureInfo(error);
+
+    logger.error(
+      "❌ Failed to get Instagram permalink:",
+      caughtDetails18.message,
+    );
+    if (caughtDetails18.response) {
+      logger.error("Response data:", caughtDetails18.response.data);
+    }
+    // Fallback to constructed URL
+    logger.warn("⚠️ Using constructed URL as fallback");
+    return `https://instagram.com/reel/${mediaId}`;
+  }
+};
+
+/**
+ * Get topic-related emoji based on title and description
+ */
+const getTopicEmoji = (title: string, description: string) => {
+  const text = `${title} ${description}`.toLowerCase();
+
+  const emojiMap = {
+    tech: "💻",
+    technology: "🔧",
+    software: "🖥️",
+    development: "⚙️",
+    programming: "👨‍💻",
+    code: "📝",
+    data: "📊",
+    database: "🗄️",
+    ai: "🤖",
+    artificial: "🧠",
+    machine: "⚡",
+    learning: "📚",
+    science: "🔬",
+    research: "🔍",
+    health: "🏥",
+    medical: "⚕️",
+    business: "💼",
+    finance: "💰",
+    marketing: "📈",
+    education: "🎓",
+    history: "📜",
+    space: "🚀",
+    environment: "🌍",
+    music: "🎵",
+    art: "🎨",
+    sports: "⚽",
+    food: "🍽️",
+    travel: "✈️",
+    gaming: "🎮",
+    social: "👥",
+    security: "🔒",
+    cloud: "☁️",
+    mobile: "📱",
+    web: "🌐",
+    design: "🎯",
+    innovation: "💡",
+    future: "🔮",
+    digital: "📱",
+    automation: "🤖",
+    system: "⚙️",
+    process: "🔄",
+    framework: "🏗️",
+    api: "🔗",
+    network: "🌐",
+    algorithm: "🧮",
+    analytics: "📊",
+    blockchain: "⛓️",
+    crypto: "₿",
+    iot: "📡",
+    vr: "🥽",
+    ar: "📱",
+    quantum: "⚛️",
+    biotech: "🧬",
+    robotics: "🤖",
+    energy: "⚡",
+    climate: "🌡️",
+    sustainability: "♻️",
+  };
+
+  // Find matching emoji
+  for (const [keyword, emoji] of Object.entries(emojiMap)) {
+    if (text.includes(keyword)) {
+      return emoji;
+    }
+  }
+
+  // Default emoji
+  return "📚";
+};
+
+/**
+ * Generate educational explanation about the topic using AI
+ */
+const generateTopicExplanation = async (
+  title: string,
+  description: string,
+  scriptContent = "",
+) => {
+  try {
+    // Generate a comprehensive 70-word explanation of the topic (without repeating the title)
+    const explanation = `This is a fascinating topic that explores the fundamental concepts and practical applications in this field. This educational video breaks down complex ideas into simple explanations, covering key principles, real-world examples, and important insights. Whether you're a student, professional, or simply curious about the subject, you'll discover valuable knowledge that can be applied in various contexts. Join us as we explore the essential aspects and emerging trends that make this topic both relevant and exciting in today's world.`;
+
+    return explanation;
+  } catch (error) {
+    const caughtDetails19 = failureInfo(error);
+
+    logger.error(
+      "❌ Failed to generate topic explanation:",
+      caughtDetails19.message,
+    );
+    return `This is an important topic that covers fundamental concepts and practical applications. This video provides clear explanations and valuable insights to help you learn and apply this knowledge effectively.`;
+  }
+};
+
+/**
+ * Generate unified social media caption using Groq only
+ */
+const generateUnifiedSocialMediaCaption = async (
+  title: string,
+  ..._unused: unknown[]
+) => {
+  const groqKey = process.env.GROQ_API_KEY;
+
+  if (!groqKey) {
+    logger.warn("⚠️ GROQ_API_KEY is missing for caption service.");
+  }
+
+  let responseText = null;
+  const methodUsed = "Groq";
+
+  if (groqKey) {
+    try {
+      const Groq = require("groq-sdk");
+      const groq = new Groq({ apiKey: groqKey });
+
+      const prompt = `Topic: ${title}
+Task: Generate components for a social media post about this topic.
+Format:
+THEORY: [Explanation]
+HASHTAGS: [#tag1 #tag2 ... #tag15]
+KEYWORDS: [word1, word2, word3, word4, word5]
+
+Rules:
+- Exactly 15 hashtags
+- Exactly 5 keywords
+- Theory under 80 words
+- Simple English
+- No markdown`;
+
+      const chatCompletion = await groq.chat.completions.create({
+        messages: [{ role: "user", content: prompt }],
+        model: "llama-3.3-70b-versatile",
+      });
+
+      responseText = chatCompletion.choices[0].message.content.trim();
+    } catch (e) {
+      const caughtDetails20 = failureInfo(e);
+
+      logger.error(
+        `❌ Groq caption generation failed: ${caughtDetails20.message}`,
+      );
+    }
+  }
+
+  try {
+    if (!responseText) {
+      throw new Error("All AI platforms failed to generate content.");
+    }
+
+    // Parse the consolidated response
+    const theoryMatch = responseText.match(/THEORY:\s*(.*)/i);
+    const hashtagsMatch = responseText.match(/HASHTAGS:\s*(.*)/i);
+    const keywordsMatch = responseText.match(/KEYWORDS:\s*(.*)/i);
+
+    const theory = theoryMatch
+      ? theoryMatch[1].trim()
+      : "Educational content about " + title;
+    const hashtags = hashtagsMatch
+      ? hashtagsMatch[1].trim()
+      : "#education #learning #facts";
+    const rawKeywords = keywordsMatch ? keywordsMatch[1].trim() : title;
+    const bracketedKeywords = `[${rawKeywords
+      .split(",")
+      .map((s: import("fluent-ffmpeg").FfprobeStream) => s.trim())
+      .join(", ")}]`;
+
+    // Create the unified caption
+    const unifiedCaption = `${title}
+
+${theory}
+
+${hashtags}
+
+${bracketedKeywords}
+
+❤️ Like • 💬 Comment • 🔄 Share 
+👥 Tag a friend who needs to learn this!
+📚 Follow for more educational content!`;
+
+    logger.info(`✅ Generated unified caption via ${methodUsed} for: ${title}`);
+    return {
+      caption: unifiedCaption,
+      theory: theory,
+      hashtags: hashtags,
+      title: title,
+    };
+  } catch (error) {
+    const caughtDetails21 = failureInfo(error);
+
+    logger.error(
+      "❌ Final caption failure, using hardcoded fallback:",
+      caughtDetails21.message,
+    );
+
+    // Final Fallback
+    const fallbackTheory = `This topic explores fundamental concepts and practical applications in this field.`;
+    const fallbackHashtags =
+      "#education #learning #knowledge #tutorial #educational #facts";
+    const fallbackCaption = `${title}\n\n${fallbackTheory}\n\n${fallbackHashtags}\n\n❤️ Like • 📚 Follow!`;
+
+    return {
+      caption: fallbackCaption,
+      theory: fallbackTheory,
+      hashtags: fallbackHashtags,
+      title: title,
+    };
+  }
+};
+
+export = {
+  uploadToYouTube,
+  uploadToInstagram,
+  uploadToFacebook,
+  uploadToBothPlatforms,
+  uploadToInstagramWithUrl,
+  uploadToFacebookWithUrl,
+  generateSocialMediaContent,
+  uploadToSupabaseAndGetLink,
+  deleteFromSupabase,
+  getInstagramPermalink,
+  generateAISocialMediaContent,
+  getTopicEmoji,
+  generateTopicExplanation,
+  generateUnifiedSocialMediaCaption,
+};

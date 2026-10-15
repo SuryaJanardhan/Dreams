@@ -1,3 +1,4 @@
+import { errorMessage } from './utils/errorMessage';
 import React, { useEffect, useRef, useState } from 'react';
 import { FileUpload } from '@/src/components/FileUpload.tsx';
 import { WelcomeScreen } from '@/src/components/WelcomeScreen.tsx';
@@ -11,7 +12,13 @@ import { parseSRT } from '@/src/utils/srtParser.ts';
 import { AppState, GeneratedContent, SRTItem } from '../types.ts';
 import { generateReelContent } from '@/src/services/geminiService.ts';
 import { APP_CONFIG } from '../config.ts';
-import { constructPrompt, EXAMPLE_HTML, EXAMPLE_JSON, EXAMPLE_SRT, EXAMPLE_TOPIC } from '@/src/utils/promptTemplates.ts';
+import {
+  constructPrompt,
+  EXAMPLE_HTML,
+  EXAMPLE_JSON,
+  EXAMPLE_SRT,
+  EXAMPLE_TOPIC
+} from '@/src/utils/promptTemplates.ts';
 
 const App: React.FC = () => {
   const [appState, setAppState] = useState<AppState>(() => {
@@ -48,7 +55,7 @@ const App: React.FC = () => {
 
   // Settings State
   const [apiKey, setApiKey] = useState(() => {
-    return localStorage.getItem('gemini_api_key') || "";
+    return localStorage.getItem('gemini_api_key') || '';
   });
   const [modelName, setModelName] = useState(() => {
     return localStorage.getItem('gemini_model_pref') || APP_CONFIG.DEFAULT_MODEL;
@@ -111,7 +118,7 @@ const App: React.FC = () => {
       }
     } else {
       // User skipped
-      setApiKey("");
+      setApiKey('');
       localStorage.removeItem('gemini_api_key');
 
       if (saveManualMode) {
@@ -143,14 +150,14 @@ const App: React.FC = () => {
       setSrtData(parsedSrt);
       setAppState(AppState.GENERATING);
     } catch (e) {
-      setError("Failed to parse files.");
+      setError('Failed to parse files.');
     }
   };
 
   const handleGenerate = async () => {
     if (!videoFile || srtData.length === 0) return;
     if (!apiKey.trim()) {
-      setError("API Key is missing. Auto-generate is disabled. Please add a key in settings or use Manual Mode.");
+      setError('API Key is missing. Auto-generate is disabled. Please add a key in settings or use Manual Mode.');
       return;
     }
 
@@ -174,8 +181,8 @@ const App: React.FC = () => {
       );
       setGeneratedContent(content);
       // Clear refinement text after success? Optional. Keeping it allows user to iterate.
-    } catch (err: any) {
-      setError(err.message || "Failed to generate content.");
+    } catch (err: unknown) {
+      setError(errorMessage(err, '') || 'Failed to generate content.');
     } finally {
       setIsGenerating(false);
     }
@@ -219,7 +226,15 @@ const App: React.FC = () => {
 
     try {
       // Initial Generation - No existing content yet
-      const content = await generateReelContent(currentSrtRaw, currentTopic, apiKey, modelName, undefined, undefined, isAudioOnly);
+      const content = await generateReelContent(
+        currentSrtRaw,
+        currentTopic,
+        apiKey,
+        modelName,
+        undefined,
+        undefined,
+        isAudioOnly
+      );
 
       if (isManualModeRef.current) {
         // User already entered manual mode, ask to replace
@@ -230,28 +245,33 @@ const App: React.FC = () => {
         setGeneratedContent(content);
         setAppState(AppState.EDITOR);
       }
-    } catch (err: any) {
-      console.warn("API Generation failed.", err);
+    } catch (err: unknown) {
+      console.warn('API Generation failed.', err);
 
       // If user is already in manual mode, ignore errors (they are editing demo content)
       if (!isManualModeRef.current) {
         // FALLBACK TO PREDEFINED SAMPLE
         // However, if it's a specific API error (like 429), we want to show it.
-        if (err.message && (err.message.includes("429") || err.message.includes("API Key") || err.message.includes("Quota"))) {
-          setError(err.message);
+        if (
+          errorMessage(err, '') &&
+          (errorMessage(err, '').includes('429') ||
+            errorMessage(err, '').includes('API Key') ||
+            errorMessage(err, '').includes('Quota'))
+        ) {
+          setError(errorMessage(err, ''));
         } else {
           // Only fallback on generic/unknown errors, or if user prefers fallback flow
           try {
             const fallbackContent: GeneratedContent = {
               html: EXAMPLE_HTML,
               layoutConfig: JSON.parse(EXAMPLE_JSON),
-              reasoning: "Fallback to Demo Content (API Error or Quota Exceeded)"
+              reasoning: 'Fallback to Demo Content (API Error or Quota Exceeded)'
             };
             setGeneratedContent(fallbackContent);
             setAppState(AppState.EDITOR);
           } catch (fallbackErr) {
-            console.error("Fallback failed", fallbackErr);
-            setError(err.message || "Failed to generate initial content.");
+            console.error('Fallback failed', fallbackErr);
+            setError(errorMessage(err, '') || 'Failed to generate initial content.');
           }
         }
       }
@@ -267,7 +287,7 @@ const App: React.FC = () => {
     setGeneratedContent({
       html: EXAMPLE_HTML,
       layoutConfig: JSON.parse(EXAMPLE_JSON),
-      reasoning: "Manual Mode Entry"
+      reasoning: 'Manual Mode Entry'
     });
     setAppState(AppState.EDITOR);
   };
@@ -310,10 +330,7 @@ const App: React.FC = () => {
           <div className="w-full h-screen flex flex-col bg-gray-950 text-white overflow-hidden relative">
             {/* Header */}
             {!isFullScreen && appState !== AppState.UPLOAD && (
-              <AppHeader
-                onResetAuth={handleResetAuth}
-                onNewProject={handleNewProject}
-              />
+              <AppHeader onResetAuth={handleResetAuth} onNewProject={handleNewProject} />
             )}
 
             {/* Main Content Area */}
@@ -322,11 +339,7 @@ const App: React.FC = () => {
               {appState === AppState.UPLOAD && (
                 <div className="flex flex-col h-full overflow-y-auto">
                   <div className="flex-1">
-                    <FileUpload
-                      onFilesSelected={handleFilesSelected}
-                      apiKey={apiKey}
-                      onBack={handleResetAuth}
-                    />
+                    <FileUpload onFilesSelected={handleFilesSelected} apiKey={apiKey} onBack={handleResetAuth} />
                   </div>
                 </div>
               )}
@@ -390,10 +403,7 @@ const App: React.FC = () => {
             </main>
 
             {/* Snackbar */}
-            <Snackbar
-              show={showSnackbar}
-              message="Prompt Copied to Clipboard!"
-            />
+            <Snackbar show={showSnackbar} message="Prompt Copied to Clipboard!" />
 
             {/* Replace Scene Dialog */}
             <ReplaceSceneDialog
