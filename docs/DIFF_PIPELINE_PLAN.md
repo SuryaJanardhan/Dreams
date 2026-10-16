@@ -14,7 +14,9 @@ The existing `.github/workflows/reel-automation.yml`, `src/automation`, Sheet qu
 
 Produce short vertical explainers in the visual grammar of the supplied reference:
 
-- one simple technical comparison per video;
+- exactly one `X vs Y` technical comparison per video;
+- prefer currently discussed, commonly confused technology terms;
+- explain the confusion with an authentic everyday situation rather than hype;
 - a fixed light brand layout;
 - Concept A and Concept B remain visually anchored;
 - a recurring illustrated mascot changes pose to guide attention;
@@ -24,6 +26,10 @@ Produce short vertical explainers in the visual grammar of the supplied referenc
 - no presenter video, lip-sync, arbitrary web scraping or manual editing in a healthy run.
 
 The initial product supports only the **difference/comparison** format. It does not attempt process, list, myth/fact or general custom-animation formats. Those can become additional storyboard adapters only after the first format succeeds across varied topics.
+
+The channel promise is: **“Two technology terms people mix up, explained simply and honestly.”** It is not a general technology-news channel. A trend signal may help rank topics, but every selected pair must represent a real confusion that can be resolved accurately in one short video.
+
+Good topics include `Browser vs Search Engine`, `Website vs Webpage`, `RAM vs Storage`, `AI vs Machine Learning`, `Authentication vs Authorization`, `API vs SDK`, `Docker Image vs Container`, `HTTP vs HTTPS`, `Frontend vs Backend` and `Cloud vs Server`. Reject pairs joined only because both are trending, pairs with no meaningful confusion and false either/or comparisons where the concepts actually overlap.
 
 Recommended duration is 25–40 seconds and 65–105 spoken words. This format should end when the distinction is understood instead of stretching every idea to 60 seconds.
 
@@ -76,16 +82,18 @@ Its implementation owns prompting, schema validation, grading and one repair att
 
 The planned sequence is:
 
-1. Hook: name both concepts and ask the difference immediately.
+1. Human hook: state the common confusion in language a friend would use.
 2. Concept A: one plain-English definition and visible example.
 3. Concept B: one plain-English definition and visible example.
-4. Relationship: show how they interact or why people confuse them.
-5. Concrete scenario: use both correctly in one real situation.
-6. Memory rule: finish with one compact distinction.
+4. Relationship: honestly show how they interact, overlap or why people confuse them.
+5. Relatable scenario: use both correctly in one situation viewers recognise.
+6. Memory rule: finish with one accurate distinction viewers can repeat.
 
 The JSON result contains title, exact narration, shared social caption, the two concept cards and five or six ordered semantic beats. Beat text must partition the exact narration. Each beat declares its headline, attention target, mascot intent and meaningful visual action. It does not contain HTML or executable animation code.
 
-Deterministic content checks enforce word count, exact beat coverage, distinct definitions, presence of a concrete example, no introduction/outro filler, no stage directions and no unsupported calls to action. A semantic quality pass grades clarity, factual consistency with supplied context, usefulness of the example and strength of the final memory rule. Failure receives one repair attempt; there is no provider fallback.
+Deterministic content checks enforce word count, exact beat coverage, distinct definitions, presence of a relatable example, no introduction/outro filler, no stage directions and no unsupported calls to action. A semantic quality pass grades clarity, factual consistency with supplied context, usefulness of the example, authenticity, whether the pair reflects a real confusion, whether overlap is explained honestly and the strength of the final memory rule. It rejects fake urgency, exaggerated claims, condescending language, invented personal stories, engagement bait and false dichotomies. Failure receives one repair attempt; there is no provider fallback.
+
+The voice should sound like a knowledgeable friend correcting a common misunderstanding: direct, warm and specific. Prefer lines such as “You use the browser to open the search engine” over abstract dictionary definitions. Do not claim “everyone gets this wrong,” pretend a personal experience happened, or force slang that does not match the existing voice.
 
 ### 3. Voice and pacing
 
