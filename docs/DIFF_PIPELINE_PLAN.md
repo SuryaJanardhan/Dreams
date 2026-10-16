@@ -97,7 +97,7 @@ The voice should sound like a knowledgeable friend correcting a common misunders
 
 ### 3. Voice and pacing
 
-Reuse the existing `voicebox/synthesize.py`, `assets/Base-audio.mp3`, the reviewed transcript and the media command/audio inspection utilities. Do not reuse `src/automation/voice` directly because its interface and implementation force narration into a 55–65 second target.
+Reuse the existing `voicebox/synthesize.py` and media command/audio inspection utilities with the difference-specific reference at `assets/difference-pipeline/Base-audio.mp3`. This is a synthetic MeloTTS `EN_INDIA` reference selected for a calm male-range Indian-English delivery; its exact transcript and provenance are stored beside it. Do not replace or depend on the core workflow's `assets/Base-audio.mp3`. Do not reuse `src/automation/voice` directly because its interface and implementation force narration into a 55–65 second target.
 
 The new voice adapter will:
 
