@@ -236,7 +236,7 @@ interface TimedScene {
   start: number;
   end: number;
   narrationWords: { from: number; to: number };
-  semanticPhrase: string;
+  captionPhrase: string;
   mascot: AvatarCue[];
   images: ImageCue[];
   cardActions: CardCue[];
@@ -248,7 +248,7 @@ The storyboard resolves word anchors such as `browser`, `search engine` and `web
 
 Example sequence:
 
-| Time | Narration/audio | Semantic phrase and subtitles | Mascot | Images/cards |
+| Time | Narration/audio | Phrase-aware subtitles | Mascot | Images/cards |
 | --- | --- | --- | --- | --- |
 | 0.0–2.0s | “A browser and a search engine sound similar…” | Hook phrase appears; exact words highlight below | `confused`, small entrance | Both cards enter together |
 | 2.0–4.0s | “…but they do different jobs.” | “Different jobs” emphasized | `compare-both` | Divider and question marks animate |
@@ -257,7 +257,7 @@ Example sequence:
 | 16.0–25.0s | Concrete example | Short example phrase plus exact captions | `explain-left/right` | Query visually travels from browser to search engine |
 | 25.0–32.0s | Memory rule | Final distinction holds long enough to read | `idea` then `result` | Both cards settle; key labels remain |
 
-Word captions always reproduce the approved narration and use the actual speech timing. Semantic phrases are shorter editorial summaries and must not contradict the spoken line. The quality checker compares both against the beat meaning.
+Captions always reproduce the approved narration and use the actual speech timing. They are divided into short readable phrases and displayed in the large central text lane shown by the reference. The current word or technical term receives restrained emphasis. Concept labels remain in their cards, but there is no second duplicate subtitle track at the bottom. This removes conflicting text and preserves space for the mascot.
 
 Mascot cues specify pose, attention direction, entrance, exit and optional emphasis. All pose files share a common canvas and foot/center anchor, so swapping them does not make the character jump. The renderer crossfades compatible poses for roughly 120–220 milliseconds and applies small deterministic translation/scale tweens. It keeps a pose long enough to read the screen and limits pose changes to avoid flicker.
 
@@ -284,12 +284,7 @@ Meaningful change should occur about every 1–2 seconds, a pose or composition 
 
 ### 9. Captions, music and sound effects
 
-Render two text layers:
-
-- a short semantic headline that supports the current explanation;
-- exact phrase-aware captions derived from the spoken words.
-
-The mascot and cards cannot enter the caption safe area. Highlight the current technical term without turning every word into visual noise.
+Render one primary text layer: exact phrase-aware captions derived from the spoken words, placed in the large central lane. Concept names are persistent card labels rather than a second narration track. The mascot and cards cannot enter the caption safe area. Highlight the current technical term without turning every word into visual noise.
 
 Reuse the existing BGM asset only after checking that its style fits the new light explainer brand. Add a small local, licensed sound pack with manifest entries such as `soft-pop`, `click`, `whoosh` and `payoff`. The storyboard chooses only these IDs. Limit effects to meaningful transitions. Duck music/effects under voice and verify integrated loudness, true peak, audible speech and absence of long accidental silence.
 
