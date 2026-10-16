@@ -185,6 +185,86 @@ For the first implementation, topic visuals should be built from approved icons,
 
 If dynamic AI illustrations are introduced later, they enter through a separate image-generation adapter and must pass the same technical, semantic and visual checks before rendering. They are not part of the first traceable implementation.
 
+### 7A. Google image-search acquisition
+
+The requested behavior is supported through an `ImageSearch` seam. Google search results are candidates, never immediately trusted render assets.
+
+```ts
+interface ImageSearch {
+  search(request: ImageRequest): Promise<ImageCandidate[]>;
+}
+```
+
+The storyboard produces at most one or two image requests for a beat. Each request contains the exact concept, its role in the explanation, required visual type, desired crop, negative terms and a short sentence describing what a correct image must visibly show. Example:
+
+```ts
+{
+  concept: "web browser application",
+  purpose: "show software that opens websites",
+  query: "web browser application interface Chrome Firefox Edge",
+  type: "interface-example",
+  aspect: "landscape",
+  mustShow: ["browser window or recognizable browser applications"],
+  mustNotShow: ["search-results-only page", "unrelated server hardware"]
+}
+```
+
+Do not scrape the consumer Google Images HTML page. The supported Custom Search JSON API can return image results and licensing filters, but Google currently marks it closed to new customers and scheduled for discontinuation on 1 January 2027. Therefore it cannot be the permanent hard dependency. If this Google Cloud project already has working Custom Search access, add a temporary Google adapter behind the seam using `searchType=image`, SafeSearch, large images, an appropriate image type and reuse-rights filtering. The adapter can later be replaced without changing storyboard or rendering code.
+
+If there is no existing supported Google API access, do not automate browser scraping or cookie-based image collection. Use a licensed-source adapter such as a curated Commons/Openverse-style source, or approved local assets, behind the same interface. Google may still help formulate queries and discover sources during development, but the pipeline downloads only through a supported, traceable source adapter.
+
+Candidate selection is a funnel:
+
+1. **Search metadata filter:** HTTPS URL, allowed MIME, minimum reported dimensions, SafeSearch, reuse-rights filter, allowed source domain and usable context page.
+2. **Bounded download:** timeout, redirect limit, byte limit, private-network rejection, MIME sniffing and a job-scoped temporary path.
+3. **Decode and normalize:** Sharp decodes the real bytes, corrects orientation, strips metadata, converts to PNG/WebP and computes dimensions, entropy and SHA-256.
+4. **License/provenance check:** retrieve the context-page license/creator/source metadata. A Google `rights` result is only a lead; the source license must still permit the intended public use and required attribution must be recorded.
+5. **Vision relevance check:** send a small normalized candidate plus the beat and `mustShow`/`mustNotShow` criteria to Gemini image understanding. Require structured scores for relevance, recognizability, misleading content, embedded text, crop suitability and brand fit.
+6. **Composition check:** simulate the actual crop inside the card, reject a hidden main subject, unreadable embedded text, watermark-heavy content or insufficient contrast.
+7. **Rank and accept:** accept the highest candidate only when every hard gate passes and the relevance score meets the threshold. Persist source URL, context URL, creator/license, query, hashes and validation result in the job record.
+
+Gemini is a relevance critic, not the license authority. A high relevance score cannot override missing reuse permission. If no candidate passes after the bounded search attempts, the stage fails and pauses this pipeline; it does not silently insert an unrelated image.
+
+For common software concepts, prefer neutral interface examples or approved icons over screenshots containing personal accounts, private information, advertisements, misleading version-specific UI or large blocks of text. The renderer adds its own labels rather than trusting text embedded in a searched image.
+
+### 7B. Synchronizing narration, mascot, images and subtitles
+
+Audio is the master clock. The four tracks are joined only after Voicebox has generated the final narration and AssemblyAI has returned actual word timestamps.
+
+```ts
+interface TimedScene {
+  start: number;
+  end: number;
+  narrationWords: { from: number; to: number };
+  semanticPhrase: string;
+  mascot: AvatarCue[];
+  images: ImageCue[];
+  cardActions: CardCue[];
+  sounds: SoundCue[];
+}
+```
+
+The storyboard resolves word anchors such as `browser`, `search engine` and `website` to exact seconds. It then emits deterministic cues. The mascot is not lip-synced and no model generates animation per frame. The renderer evaluates the approved cues at each output timestamp.
+
+Example sequence:
+
+| Time | Narration/audio | Semantic phrase and subtitles | Mascot | Images/cards |
+| --- | --- | --- | --- | --- |
+| 0.0–2.0s | “A browser and a search engine sound similar…” | Hook phrase appears; exact words highlight below | `confused`, small entrance | Both cards enter together |
+| 2.0–4.0s | “…but they do different jobs.” | “Different jobs” emphasized | `compare-both` | Divider and question marks animate |
+| 4.0–10.0s | “A browser is an application…” | Phrase follows the definition | `point-left` | Validated browser image reveals; left card highlights |
+| 10.0–16.0s | “A search engine is a website…” | Search-engine definition | `point-right` | Search image reveals; right card highlights |
+| 16.0–25.0s | Concrete example | Short example phrase plus exact captions | `explain-left/right` | Query visually travels from browser to search engine |
+| 25.0–32.0s | Memory rule | Final distinction holds long enough to read | `idea` then `result` | Both cards settle; key labels remain |
+
+Word captions always reproduce the approved narration and use the actual speech timing. Semantic phrases are shorter editorial summaries and must not contradict the spoken line. The quality checker compares both against the beat meaning.
+
+Mascot cues specify pose, attention direction, entrance, exit and optional emphasis. All pose files share a common canvas and foot/center anchor, so swapping them does not make the character jump. The renderer crossfades compatible poses for roughly 120–220 milliseconds and applies small deterministic translation/scale tweens. It keeps a pose long enough to read the screen and limits pose changes to avoid flicker.
+
+Image cues specify source asset ID, destination card, fit mode, reveal style and word anchor. Images are downloaded and validated before rendering begins; the renderer never waits on the network. A reveal can fade, crop-wipe or slightly zoom, but it cannot move outside its card or cover captions.
+
+Sound cues are aligned to the same anchors. Narration is mixed first in priority, BGM is ducked under it, and short effects are level-limited below the voice. The final mux uses the exact narration duration plus the configured opening/ending hold. A/V duration drift above the allowed tolerance rejects the output.
+
 ### 8. Layout and rendering
 
 Build the new renderer from scratch around one typed comparison template. Reuse Playwright, Sharp, FFmpeg and deterministic explicit-time frame seeking from the existing implementation, without changing the existing renderer.
@@ -307,7 +387,10 @@ New non-secret settings use `DIFF_` names, including:
 - `DIFF_TARGET_MIN_SECONDS=25`;
 - `DIFF_TARGET_MAX_SECONDS=40`;
 - `DIFF_RENDER_FPS=30`;
+- `DIFF_IMAGE_SEARCH_PROVIDER=google-cse` only when an existing supported account is available;
 - `DIFF_PUBLISH_ENABLED=false` during branch validation.
+
+An existing Google Custom Search implementation would additionally require its own API key and Programmable Search Engine ID. Keep those separate from the Gemini key. Because that Google interface is approaching discontinuation, the configuration must select the adapter rather than leaking Google-specific fields into the storyboard domain.
 
 Provider credentials may be shared because they represent the same accounts, but state, storage keys and control flags are not shared. The known Gmail, YouTube refresh-token and Supabase connectivity blockers must be corrected before a publishing-enabled run. Render-only development can continue without changing those remote systems.
 
@@ -324,6 +407,7 @@ Provider credentials may be shared because they represent the same accounts, but
 - Add a temporary approved mascot fixture pack and manifest.
 - Implement manifest/asset validators.
 - Implement fixed storyboard fixture and comparison renderer.
+- Implement the image-search seam with a deterministic fixture adapter; add the real search adapter only after confirming supported credentials.
 - Render a complete synthetic-audio browser/search-engine reel locally.
 - Verify geometry, captions, movement, media format and cleanup.
 
