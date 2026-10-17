@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "assets": [
+    {
+      "id": "neutral",
+      "path": "mascot/neutral.png",
+      "sha256": "cb488c294fafd880074a1594d71444abf38b1300fac7078df8d8bc45878724a0",
+      "width": 512,
+      "height": 512,
+      "purpose": "mascot-pose"
+    },
+    {
+      "id": "confused",
+      "path": "mascot/confused.png",
+      "sha256": "898d740f9321850bed5af07e5d1aa4260232bdc42e330f32fa5edd5f17017880",
+      "width": 512,
+      "height": 512,
+      "purpose": "mascot-pose"
+    },
+    {
+      "id": "point-left",
+      "path": "mascot/point-left.png",
+      "sha256": "50bc7774a44771ef14d0ba3543c3ae81d2964a4b792061cddaa1d8895a48153f",
+      "width": 512,
+      "height": 512,
+      "purpose": "mascot-pose"
+    },
+    {
+      "id": "point-right",
+      "path": "mascot/point-right.png",
+      "sha256": "0beb91c618f851276db32d750e1055baf94f7fedeb04cca9e399a9f24ac8525e",
+      "width": 512,
+      "height": 512,
+      "purpose": "mascot-pose"
+    },
+    {
+      "id": "compare-both",
+      "path": "mascot/compare-both.png",
+      "sha256": "b7e705bc3712b12b200aec02680a4564ec1874b28fbab9aa505576bb5b98af9c",
+      "width": 512,
+      "height": 512,
+      "purpose": "mascot-pose"
+    },
+    {
+      "id": "idea",
+      "path": "mascot/idea.png",
+      "sha256": "10ac4dee704ee6c161f89f0cf08174b287cd8adc25136352ec0b5ac07bce6f35",
+      "width": 512,
+      "height": 512,
+      "purpose": "mascot-pose"
+    }
+  ]
+}

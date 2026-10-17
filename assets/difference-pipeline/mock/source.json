@@ -1,0 +1,16 @@
+{
+  "kind": "local-mock-narration",
+  "voiceProvider": "Microsoft Edge online text-to-speech",
+  "voice": "en-IN-PrabhatNeural",
+  "voiceGender": "male",
+  "rate": "-3%",
+  "pitch": "-4Hz",
+  "purpose": "Reproducible local rendering fixture; production will use the isolated Voicebox adapter",
+  "scriptFile": "browser-vs-search-engine.txt",
+  "captionsFile": "browser-vs-search-engine.vtt",
+  "audioFile": "browser-vs-search-engine.mp3",
+  "audioSha256": "cb2629deac3c2f6e864f7c86185e0fe1a9adc6668d336c5ee2d565812398550a",
+  "captionsSha256": "b3ea93ae613c4c69c8363b9109d675967cd6ab05ea2b4b08afe324dbd94916fc",
+  "durationSeconds": 34.896,
+  "disclosure": "Synthetic male Indian-English voice used only for the mock artifact."
+}

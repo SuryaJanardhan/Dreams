@@ -8,6 +8,7 @@ async function main() {
   const configured = new Set<string>();
   for (const path of [
     "tsconfig.json",
+    "tsconfig.difference.json",
     "tsconfig.legacy.json",
     "reel-composer/tsconfig.json",
   ]) {

@@ -46,7 +46,8 @@
   },
   "scripts": {
     "automation": "node --import tsx src/automation/main.ts",
-    "typecheck": "npm run typecheck:automation && npm run typecheck:legacy && npm run typecheck:composer",
+    "diff:mock": "node --import tsx src/difference-pipeline/mock.ts",
+    "typecheck": "npm run typecheck:automation && npm run typecheck:difference && npm run typecheck:legacy && npm run typecheck:composer",
     "build": "npm run build:automation && npm run build:legacy && npm --prefix reel-composer run build",
     "test": "node --import tsx --test --test-concurrency=1 tests/*.test.ts",
     "postinstall": "node --import tsx scripts/generate-compat.ts",
@@ -54,6 +55,7 @@
     "typecheck:legacy": "tsc -p tsconfig.legacy.json --noEmit",
     "build:legacy": "tsc -p tsconfig.legacy.json",
     "typecheck:automation": "tsc --noEmit",
+    "typecheck:difference": "tsc -p tsconfig.difference.json",
     "typecheck:composer": "npm --prefix reel-composer run typecheck",
     "build:automation": "tsc",
     "syntax": "node --import tsx scripts/check-syntax.ts",
