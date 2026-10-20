@@ -3,6 +3,8 @@
   "generator": "OpenAI built-in image generation",
   "generatedAt": "2026-10-17",
   "sheetSha256": "1f8cef4c595e4376e2c0b0d6796d4cdce424f10cf251fa14c748551757c67970",
+  "ownershipBasis": "Original AI-generated artwork commissioned by the repository owner for this project; it does not depict or impersonate a real person.",
+  "permittedUse": "Approved for public educational social-media videos produced by Dreams.",
   "prompt": "Original young adult male Indian technology guide in minimal black ink educational line art, same identity and clothing across six full-body poses: neutral, confused, point-left, point-right, compare-both and idea/result. Transparent background; no labels, logos or watermark.",
   "notes": "Generated for this project using the supplied reel frames only as broad visual-tone references. Individual 512x512 cells were cropped mechanically from the generated 3x2 sheet."
 }

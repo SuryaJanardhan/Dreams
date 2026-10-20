@@ -1,5 +1,7 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { basename, resolve } from "node:path";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 import sharp from "sharp";
 import { command, measureMix, probe } from "../automation/operations/media.js";
 import type { MockScene, RenderResult } from "./domain.js";
@@ -121,6 +123,16 @@ export async function normalizeMascotPose(path: string): Promise<Buffer> {
     .toBuffer();
 }
 
+async function poseOpacity(input: Buffer, opacity: number): Promise<Buffer> {
+  const { data, info } = await sharp(input)
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  for (let index = 3; index < data.length; index += info.channels)
+    data[index] = Math.round((data[index] ?? 0) * opacity);
+  return sharp(data, { raw: info }).png().toBuffer();
+}
+
 export async function renderMock(
   root: string,
   audioPath: string,
@@ -129,70 +141,137 @@ export async function renderMock(
 ): Promise<RenderResult> {
   const signal = AbortSignal.timeout(20 * 60 * 1000);
   const assets = await validateAssetPack(root);
-  await rm(outputDirectory, { recursive: true, force: true });
+  const ownedOutput = resolve(root, "temp-difference");
+  if (resolve(outputDirectory) !== ownedOutput)
+    throw new Error(
+      "Mock renderer may clean only its owned temp-difference output",
+    );
+  await rm(ownedOutput, { recursive: true, force: true });
   await mkdir(resolve(outputDirectory, "work"), { recursive: true });
   const work = resolve(outputDirectory, "work");
-  const segments: string[] = [];
-  for (const [index, scene] of scenes.entries()) {
+  if (!scenes.length) throw new Error("Mock renderer has no scenes");
+  const backgrounds = await Promise.all(
+    scenes.map((scene) => sharp(sceneSvg(scene)).png().toBuffer()),
+  );
+  const normalized = new Map<string, Buffer>();
+  for (const scene of scenes) {
     const pose = assets.get(scene.pose);
     if (!pose) throw new Error(`Missing mascot pose: ${scene.pose}`);
-    const png = resolve(work, `scene-${index}.png`);
-    await sharp(sceneSvg(scene))
-      .composite([
-        {
-          input: await normalizeMascotPose(pose),
-          left: 180,
-          top: 1120,
-        },
-      ])
-      .png()
-      .toFile(png);
-    const segment = resolve(work, `segment-${index}.mp4`);
-    const duration = scene.end - scene.start;
-    await command(
-      "ffmpeg",
-      [
-        "-y",
-        "-loop",
-        "1",
-        "-framerate",
-        "30",
-        "-i",
-        png,
-        "-t",
-        duration.toFixed(3),
-        "-vf",
-        "scale=1080:1920,format=yuv420p",
-        "-an",
-        "-c:v",
-        "libx264",
-        "-preset",
-        "veryfast",
-        "-crf",
-        "19",
-        "-r",
-        "30",
-        segment,
-      ],
-      signal,
-    );
-    segments.push(segment);
+    if (!normalized.has(scene.pose))
+      normalized.set(scene.pose, await normalizeMascotPose(pose));
   }
-  const concat = resolve(work, "segments.txt");
-  await writeFile(
-    concat,
-    segments
-      .map((path) => `file '${path.replaceAll("'", "'\\''")}'`)
-      .join("\n"),
-  );
+  const transitionFrames = 6;
+  const variants = new Map<string, Buffer[]>();
+  for (const [pose, image] of normalized)
+    variants.set(
+      pose,
+      await Promise.all(
+        Array.from({ length: transitionFrames + 1 }, (_, index) =>
+          poseOpacity(image, index / transitionFrames),
+        ),
+      ),
+    );
   const silent = resolve(work, "silent.mp4");
-  await command(
-    "ffmpeg",
-    ["-y", "-f", "concat", "-safe", "0", "-i", concat, "-c", "copy", silent],
-    signal,
-  );
   const audioInfo = await probe(audioPath, signal);
   const duration = audioInfo.format.duration;
+  const encoder = spawn(
+    "ffmpeg",
+    [
+      "-y",
+      "-f",
+      "image2pipe",
+      "-vcodec",
+      "png",
+      "-framerate",
+      "30",
+      "-i",
+      "pipe:0",
+      "-an",
+      "-c:v",
+      "libx264",
+      "-preset",
+      "veryfast",
+      "-crf",
+      "19",
+      "-pix_fmt",
+      "yuv420p",
+      "-r",
+      "30",
+      silent,
+    ],
+    { stdio: ["pipe", "ignore", "pipe"] },
+  );
+  let encoderError = "";
+  encoder.stderr.on("data", (buffer: Buffer) => {
+    encoderError = (encoderError + buffer.toString()).slice(-3000);
+  });
+  const completion = new Promise<void>((resolveCompletion, reject) => {
+    encoder.on("error", reject);
+    encoder.on("close", (code) =>
+      code === 0
+        ? resolveCompletion()
+        : reject(new Error(`Difference frame encoder failed: ${encoderError}`)),
+    );
+  });
+  completion.catch(() => {});
+  const abortEncoder = () => encoder.kill("SIGKILL");
+  signal.addEventListener("abort", abortEncoder, { once: true });
+  try {
+    let sceneIndex = 0;
+    for (
+      let frameIndex = 0;
+      frameIndex < Math.ceil(duration * 30);
+      frameIndex++
+    ) {
+      signal.throwIfAborted();
+      const time = frameIndex / 30;
+      while (
+        sceneIndex < scenes.length - 1 &&
+        time >= (scenes[sceneIndex + 1]?.start ?? duration)
+      )
+        sceneIndex++;
+      const scene = scenes[sceneIndex];
+      const background = backgrounds[sceneIndex];
+      if (!scene || !background) throw new Error("Missing rendered mock scene");
+      const currentVariants = variants.get(scene.pose);
+      if (!currentVariants)
+        throw new Error(`Missing pose variants: ${scene.pose}`);
+      const frameWithinTransition = Math.floor((time - scene.start) * 30);
+      const previous = scenes[sceneIndex - 1];
+      const changingPose = previous && previous.pose !== scene.pose;
+      const transitionIndex = Math.min(
+        transitionFrames,
+        Math.max(0, frameWithinTransition),
+      );
+      const layers: sharp.OverlayOptions[] = [];
+      if (changingPose && transitionIndex < transitionFrames) {
+        const previousVariants = variants.get(previous.pose);
+        const previousImage =
+          previousVariants?.[transitionFrames - transitionIndex];
+        const currentImage = currentVariants[transitionIndex];
+        if (!previousImage || !currentImage)
+          throw new Error("Missing mascot transition frame");
+        layers.push(
+          { input: previousImage, left: 180, top: 1120 },
+          { input: currentImage, left: 180, top: 1120 },
+        );
+      } else {
+        const currentImage = currentVariants[transitionFrames];
+        if (!currentImage) throw new Error("Missing mascot frame");
+        layers.push({ input: currentImage, left: 180, top: 1120 });
+      }
+      const frame = await sharp(background).composite(layers).png().toBuffer();
+      if (!encoder.stdin.write(frame)) await once(encoder.stdin, "drain");
+    }
+    encoder.stdin.end();
+    await completion;
+  } catch (error) {
+    encoder.kill("SIGKILL");
+    await completion.catch(() => {});
+    throw error;
+  } finally {
+    signal.removeEventListener("abort", abortEncoder);
+  }
   const videoPath = resolve(
     outputDirectory,
     "browser-vs-search-engine-mock.mp4",
@@ -211,7 +290,7 @@ export async function renderMock(
       "-i",
       bgm,
       "-filter_complex",
-      `[1:a]loudnorm=I=-16:TP=-1.5:LRA=7,asplit=2[voice][side];[2:a]volume=0.07,afade=t=in:st=0:d=0.4,afade=t=out:st=${Math.max(0, duration - 0.7).toFixed(3)}:d=0.7[music];[music][side]sidechaincompress=threshold=0.02:ratio=8:attack=10:release=280[ducked];[voice][ducked]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.89[mix]`,
+      `[1:a]loudnorm=I=-16:TP=-1.5:LRA=7,asplit=2[voice][side];[2:a]volume=0.07,afade=t=in:st=0:d=0.4,afade=t=out:st=${Math.max(0, duration - 0.7).toFixed(3)}:d=0.7[music];[music][side]sidechaincompress=threshold=0.02:ratio=8:attack=10:release=280[ducked];[voice][ducked]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.78:level=false[mix]`,
       "-map",
       "0:v",
       "-map",
@@ -250,6 +329,10 @@ export async function renderMock(
   )
     throw new Error("Mock output failed media verification");
   const mix = await measureMix(videoPath, signal);
+  if (mix.truePeakDb > -1.2)
+    throw new Error(
+      `Mock output true peak ${mix.truePeakDb} dB exceeds the -1.2 dB ceiling`,
+    );
   const result: RenderResult = {
     videoPath,
     posterPath,

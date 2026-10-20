@@ -6,6 +6,12 @@ import { z } from "zod";
 
 const manifestSchema = z.object({
   version: z.literal(1),
+  provenance: z.object({
+    kind: z.literal("project-generated"),
+    sourceRecord: z.string().regex(/^mascot\/source\.json$/),
+    ownershipBasis: z.string().min(20),
+    permittedUse: z.literal("approved-for-public-social-media"),
+  }),
   assets: z.array(
     z.object({
       id: z.string().min(1),
@@ -24,6 +30,7 @@ export async function validateAssetPack(root: string) {
     await readFile(resolve(directory, "asset-manifest.json"), "utf8"),
   );
   const manifest = manifestSchema.parse(raw);
+  await readFile(resolve(directory, manifest.provenance.sourceRecord), "utf8");
   const validated = new Map<string, string>();
   for (const asset of manifest.assets) {
     const path = resolve(directory, asset.path);

@@ -1,5 +1,11 @@
 {
   "version": 1,
+  "provenance": {
+    "kind": "project-generated",
+    "sourceRecord": "mascot/source.json",
+    "ownershipBasis": "Original mascot generated specifically for the Dreams difference pipeline",
+    "permittedUse": "approved-for-public-social-media"
+  },
   "assets": [
     {
       "id": "neutral",

@@ -63,13 +63,16 @@ export function splitCaptionCues(cues: CaptionCue[]): CaptionCue[] {
   });
 }
 
-const poses: MascotPose[] = [
-  "confused",
-  "point-left",
-  "neutral",
-  "point-right",
-  "compare-both",
-  "idea",
+const directions: readonly {
+  pose: MascotPose;
+  attention: MockScene["attention"];
+}[] = [
+  { pose: "confused", attention: "both" },
+  { pose: "point-left", attention: "left" },
+  { pose: "neutral", attention: "left" },
+  { pose: "point-right", attention: "right" },
+  { pose: "compare-both", attention: "both" },
+  { pose: "idea", attention: "both" },
 ];
 
 export function buildMockTimeline(
@@ -83,18 +86,14 @@ export function buildMockTimeline(
     if (end <= start || end > duration + 0.2)
       throw new Error("Caption cues do not form a valid narration timeline");
     const group = cue.group ?? index;
-    const attention =
-      group === 1 || group === 2
-        ? ("left" as const)
-        : group === 3
-          ? ("right" as const)
-          : ("both" as const);
+    const direction = directions[group] ?? directions.at(-1);
+    if (!direction) throw new Error("Missing mock scene direction");
     return {
       start,
       end: Math.min(end, duration),
       text: cue.text,
-      pose: poses[group] ?? "idea",
-      attention,
+      pose: direction.pose,
+      attention: direction.attention,
     };
   });
 }

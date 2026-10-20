@@ -7,7 +7,10 @@ import {
   splitCaptionCues,
 } from "../src/difference-pipeline/timing.js";
 import { validateAssetPack } from "../src/difference-pipeline/assets.js";
-import { normalizeMascotPose } from "../src/difference-pipeline/rendering.js";
+import {
+  normalizeMascotPose,
+  renderMock,
+} from "../src/difference-pipeline/rendering.js";
 import sharp from "sharp";
 
 test("difference captions become an ordered mascot timeline", () => {
@@ -63,4 +66,11 @@ test("every mascot pose keeps the same bottom-center foot anchor", async () => {
     const center = xs.reduce((total, x) => total + x, 0) / xs.length;
     assert.ok(Math.abs(center - 360) < 5, `unstable foot anchor in ${path}`);
   }
+});
+
+test("mock renderer refuses to clean an unowned output directory", async () => {
+  await assert.rejects(
+    renderMock(process.cwd(), "unused.mp3", [], process.cwd()),
+    /owned temp-difference output/,
+  );
 });
