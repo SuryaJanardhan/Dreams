@@ -5,13 +5,25 @@ export interface CaptionCue {
   group?: number;
 }
 
+export interface TimedWord {
+  text: string;
+  start: number;
+  end: number;
+}
+
 export type MascotPose =
   | "neutral"
   | "confused"
   | "point-left"
   | "point-right"
   | "compare-both"
-  | "idea";
+  | "idea"
+  | "thinking"
+  | "warning"
+  | "phone"
+  | "laptop"
+  | "thumbs-up"
+  | "conclusion";
 
 export interface MockScene extends CaptionCue {
   pose: MascotPose;

@@ -1,4 +1,4 @@
-import type { CaptionCue, MascotPose, MockScene } from "./domain.js";
+import type { CaptionCue, MascotPose, MockScene, TimedWord } from "./domain.js";
 
 function seconds(value: string): number {
   const match = value.match(/^(\d{2}):(\d{2}):(\d{2})[,.](\d{3})$/);
@@ -43,20 +43,43 @@ function chunkSizes(total: number): number[] {
 }
 
 /** Split provider sentence cues into short phrases while preserving their real time window. */
-export function splitCaptionCues(cues: CaptionCue[]): CaptionCue[] {
+export function splitCaptionCues(
+  cues: CaptionCue[],
+  actualWords: TimedWord[],
+): CaptionCue[] {
+  if (!actualWords.length) throw new Error("Actual word timings are required");
+  let actualOffset = 0;
   return cues.flatMap((cue, group) => {
-    const words = cue.text.trim().split(/\s+/);
-    const sizes = chunkSizes(words.length);
-    const duration = cue.end - cue.start;
+    const intendedWords = cue.text.trim().split(/\s+/);
+    const timedWords = actualWords.slice(
+      actualOffset,
+      actualOffset + intendedWords.length,
+    );
+    actualOffset += intendedWords.length;
+    const first = timedWords[0];
+    const last = timedWords.at(-1);
+    if (
+      timedWords.length !== intendedWords.length ||
+      !first ||
+      !last ||
+      first.start < cue.start - 0.25 ||
+      last.end > cue.end + 0.25
+    )
+      throw new Error("Timed words do not match the approved caption cue");
+    const sizes = chunkSizes(intendedWords.length);
     let wordOffset = 0;
     return sizes.map((size) => {
       const from = wordOffset;
       const to = wordOffset + size;
       wordOffset = to;
+      const phraseFirst = timedWords[from];
+      const phraseLast = timedWords[to - 1];
+      if (!phraseFirst || !phraseLast)
+        throw new Error("Caption phrase has no actual word timing");
       return {
-        start: cue.start + (duration * from) / words.length,
-        end: cue.start + (duration * to) / words.length,
-        text: words.slice(from, to).join(" "),
+        start: phraseFirst.start,
+        end: phraseLast.end,
+        text: intendedWords.slice(from, to).join(" "),
         group,
       };
     });
@@ -69,10 +92,10 @@ const directions: readonly {
 }[] = [
   { pose: "confused", attention: "both" },
   { pose: "point-left", attention: "left" },
-  { pose: "neutral", attention: "left" },
-  { pose: "point-right", attention: "right" },
+  { pose: "phone", attention: "left" },
+  { pose: "laptop", attention: "right" },
   { pose: "compare-both", attention: "both" },
-  { pose: "idea", attention: "both" },
+  { pose: "conclusion", attention: "both" },
 ];
 
 export function buildMockTimeline(
@@ -94,6 +117,7 @@ export function buildMockTimeline(
       text: cue.text,
       pose: direction.pose,
       attention: direction.attention,
+      ...(cue.group === undefined ? {} : { group: cue.group }),
     };
   });
 }

@@ -54,6 +54,54 @@
       "width": 512,
       "height": 512,
       "purpose": "mascot-pose"
+    },
+    {
+      "id": "thinking",
+      "path": "mascot/thinking.png",
+      "sha256": "950f751b2e2aaa9e635aef312f6cad67ffb703506afed5601a12a3a4d5def7ec",
+      "width": 512,
+      "height": 512,
+      "purpose": "mascot-pose"
+    },
+    {
+      "id": "warning",
+      "path": "mascot/warning.png",
+      "sha256": "fb09a6008b92ca061e055c2c8a181b06fd98750044e7a0c2befb035d8130c1cc",
+      "width": 512,
+      "height": 512,
+      "purpose": "mascot-pose"
+    },
+    {
+      "id": "phone",
+      "path": "mascot/phone.png",
+      "sha256": "7ac086c7df68948236795994ec5ecd3433dad41acdffe53a47bf0923a8e91751",
+      "width": 512,
+      "height": 512,
+      "purpose": "mascot-pose"
+    },
+    {
+      "id": "laptop",
+      "path": "mascot/laptop.png",
+      "sha256": "0f018d42e51f56e0e6d0499adf1247fce7129998536c719c4ee0aaf67c9c6285",
+      "width": 512,
+      "height": 512,
+      "purpose": "mascot-pose"
+    },
+    {
+      "id": "thumbs-up",
+      "path": "mascot/thumbs-up.png",
+      "sha256": "f909975c1fe9c7596e299ad6f44fe7865986d06fc5d5a72acc93eeb1f114210a",
+      "width": 512,
+      "height": 512,
+      "purpose": "mascot-pose"
+    },
+    {
+      "id": "conclusion",
+      "path": "mascot/conclusion.png",
+      "sha256": "3a6ed87cc499fb4a804531493ccf41aab5990446b7a63a563c2015755297f3fb",
+      "width": 512,
+      "height": 512,
+      "purpose": "mascot-pose"
     }
   ]
 }

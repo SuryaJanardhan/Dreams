@@ -1,11 +1,11 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { basename, resolve } from "node:path";
 import { spawn } from "node:child_process";
-import { once } from "node:events";
 import sharp from "sharp";
 import { command, measureMix, probe } from "../automation/operations/media.js";
 import type { MockScene, RenderResult } from "./domain.js";
 import { validateAssetPack } from "./assets.js";
+import { writeWithBackpressure } from "./process.js";
 
 function xml(text: string) {
   return text
@@ -15,7 +15,7 @@ function xml(text: string) {
     .replaceAll('"', "&quot;");
 }
 
-function lines(text: string, limit = 24): string[] {
+function wrapLines(text: string, limit: number): string[] {
   const result: string[] = [];
   let current = "";
   for (const word of text.split(/\s+/)) {
@@ -25,7 +25,26 @@ function lines(text: string, limit = 24): string[] {
     } else current = current ? `${current} ${word}` : word;
   }
   if (current) result.push(current);
-  return result.slice(0, 2);
+  return result;
+}
+
+export function layoutCaption(text: string) {
+  for (const option of [
+    { fontSize: 64, limit: 24, maxLines: 2 },
+    { fontSize: 58, limit: 27, maxLines: 2 },
+    { fontSize: 52, limit: 30, maxLines: 3 },
+    { fontSize: 46, limit: 34, maxLines: 3 },
+  ]) {
+    const lines = wrapLines(text, option.limit);
+    if (lines.length <= option.maxLines)
+      return {
+        lines,
+        fontSize: option.fontSize,
+        lineHeight: option.fontSize + 18,
+        boxHeight: Math.max(130, lines.length * (option.fontSize + 18) + 46),
+      };
+  }
+  throw new Error("Subtitle cannot fit without dropping spoken text");
 }
 
 function illustration(side: "left" | "right", active: boolean) {
@@ -55,8 +74,31 @@ function illustration(side: "left" | "right", active: boolean) {
   </g>`;
 }
 
+function analogyIllustration(side: "left" | "right") {
+  const x = side === "left" ? 74 : 574;
+  if (side === "left")
+    return `<g>
+      <path d="M${x + 72} 535h310l-36-92c-8-20-27-33-49-33H${x + 171}c-22 0-42 13-51 33z" fill="#f6d84a" stroke="#111" stroke-width="9" stroke-linejoin="round"/>
+      <rect x="${x + 55}" y="518" width="345" height="78" rx="24" fill="#fff" stroke="#111" stroke-width="9"/>
+      <circle cx="${x + 133}" cy="603" r="31" fill="#fff" stroke="#111" stroke-width="10"/>
+      <circle cx="${x + 327}" cy="603" r="31" fill="#fff" stroke="#111" stroke-width="10"/>
+      <path d="M${x + 165} 448h132l22 70H${x + 143}z" fill="#fff" stroke="#111" stroke-width="7"/>
+    </g>`;
+  return `<g>
+    <path d="M${x + 61} 421l111-35 121 35 111-35v215l-111 35-121-35-111 35z" fill="#fff" stroke="#111" stroke-width="9" stroke-linejoin="round"/>
+    <path d="M${x + 172} 386v215M${x + 293} 421v215" stroke="#111" stroke-width="7"/>
+    <path d="M${x + 100} 534c50-45 92-51 144-22 54 31 84 21 123-22" fill="none" stroke="#f6d84a" stroke-width="14" stroke-linecap="round"/>
+    <path d="M${x + 237} 470c0-35 28-62 62-62s62 27 62 62c0 47-62 103-62 103s-62-56-62-103z" fill="#f6d84a" stroke="#111" stroke-width="8"/>
+    <circle cx="${x + 299}" cy="470" r="18" fill="#fff" stroke="#111" stroke-width="6"/>
+  </g>`;
+}
+
+export function visualMode(scene: MockScene) {
+  return scene.group === 4 ? ("car-map" as const) : ("browser-search" as const);
+}
+
 function sceneSvg(scene: MockScene) {
-  const captionLines = lines(scene.text);
+  const caption = layoutCaption(scene.text);
   const left = scene.attention !== "right";
   const right = scene.attention !== "left";
   return Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920">
@@ -68,9 +110,9 @@ function sceneSvg(scene: MockScene) {
     <rect x="554" y="245" width="472" height="460" rx="34" fill="#fff" stroke="#111" stroke-width="${right ? 10 : 5}" opacity="${right ? 1 : 0.36}"/>
     ${left ? '<rect x="84" y="266" width="412" height="15" rx="7" fill="#f6d84a"/>' : ""}
     ${right ? '<rect x="584" y="266" width="412" height="15" rx="7" fill="#f6d84a"/>' : ""}
-    ${illustration("left", left)}${illustration("right", right)}
-    <rect x="95" y="785" width="890" height="${captionLines.length === 1 ? 130 : 210}" rx="34" fill="#f6d84a"/>
-    <g>${captionLines.map((line, lineIndex) => `<text x="540" y="${865 + lineIndex * 82}" text-anchor="middle" font-family="Noto Sans,Arial" font-size="64" font-weight="900" fill="#111">${xml(line)}</text>`).join("")}</g>
+    ${visualMode(scene) === "car-map" ? `${analogyIllustration("left")}${analogyIllustration("right")}` : `${illustration("left", left)}${illustration("right", right)}`}
+    <rect x="95" y="785" width="890" height="${caption.boxHeight}" rx="34" fill="#f6d84a"/>
+    <g>${caption.lines.map((line, lineIndex) => `<text x="540" y="${850 + lineIndex * caption.lineHeight}" text-anchor="middle" font-family="Noto Sans,Arial" font-size="${caption.fontSize}" font-weight="900" fill="#111">${xml(line)}</text>`).join("")}</g>
   </svg>`);
 }
 
@@ -261,7 +303,7 @@ export async function renderMock(
         layers.push({ input: currentImage, left: 180, top: 1120 });
       }
       const frame = await sharp(background).composite(layers).png().toBuffer();
-      if (!encoder.stdin.write(frame)) await once(encoder.stdin, "drain");
+      await writeWithBackpressure(encoder.stdin, frame, completion);
     }
     encoder.stdin.end();
     await completion;
