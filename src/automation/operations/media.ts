@@ -97,6 +97,17 @@ export async function assertAudio(path: string, signal: AbortSignal) {
   );
   if (!Number.isFinite(rms) || rms < -55)
     throw new Error("Narration has no measurable audible energy");
+  const peak = Number(
+    [...stats.matchAll(/Peak level dB:\s*(-?[\d.]+|-inf)/g)].at(-1)?.[1],
+  );
+  const flatFactor = Number(
+    [...stats.matchAll(/Flat factor:\s*(-?[\d.]+|-inf)/g)].at(-1)?.[1],
+  );
+  if (
+    !Number.isFinite(peak) ||
+    (peak > -0.1 && Number.isFinite(flatFactor) && flatFactor > 0.1)
+  )
+    throw new Error("Narration contains clipped samples");
   return { duration: info.format.duration, sampleRate: audio.sample_rate };
 }
 
@@ -130,7 +141,7 @@ export async function measureMix(path: string, signal: AbortSignal) {
   if (
     measured.input_i < -35 ||
     measured.input_i > -8 ||
-    measured.input_tp > 0.1
+    measured.input_tp > -1.2
   )
     throw new Error("Final mix loudness/true peak is outside safe bounds");
   return {

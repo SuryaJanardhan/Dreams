@@ -37,9 +37,35 @@ test("custom animation code must satisfy the typed contract and cannot load exte
   }
 });
 
-import { renderVideo } from "../src/automation/rendering/index.js";
+import {
+  objectGeometryErrors,
+  renderVideo,
+} from "../src/automation/rendering/index.js";
 import { command } from "../src/automation/operations/media.js";
 import type { ContentPlan, CaptionTrack } from "../src/automation/domain.js";
+test("persistent visual objects reject geometry drift between scenes", () => {
+  const expected = [
+    {
+      id: "request",
+      label: "Request",
+      role: "moving request",
+      color: "#22d3ee",
+      box: { x: 100, y: 200, width: 180, height: 120 },
+    },
+  ];
+  assert.deepEqual(
+    objectGeometryErrors(expected, [
+      { id: "request", x: 105, y: 195, width: 178, height: 125 },
+    ]),
+    [],
+  );
+  assert.match(
+    objectGeometryErrors(expected, [
+      { id: "request", x: 350, y: 200, width: 180, height: 120 },
+    ]).join(";"),
+    /position drifted/,
+  );
+});
 for (const topic of ["API", "Load Balancer", "Cache"])
   test(`frame export produces a captioned 1080p60 ${topic} clip without screen recording`, async () => {
     const workspace = await createWorkspace(

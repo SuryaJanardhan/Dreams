@@ -1,6 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { gradeContent } from "../src/automation/content/index.js";
+import {
+  gradeContent,
+  requireExplanationQuality,
+} from "../src/automation/content/index.js";
 test("supplied narration preserves punctuation and wording exactly, not only normalized tokens", () => {
   const text = Array.from({ length: 140 }, () => "request").join(" ") + ".";
   const task = {
@@ -20,5 +23,45 @@ test("supplied narration preserves punctuation and wording exactly, not only nor
   assert.throws(
     () => gradeContent({ ...plan, narration: text.replace(/\.$/, "!") }, task),
     /must not be rewritten/,
+  );
+});
+
+test("prohibited generic introductions are rejected instead of barely passing", () => {
+  const words = [
+    "Welcome,",
+    ...Array.from({ length: 139 }, (_, index) => `detail${index}`),
+  ];
+  const narration = words.join(" ");
+  const thirds = [words.slice(0, 47), words.slice(47, 94), words.slice(94)];
+  assert.throws(
+    () =>
+      gradeContent(
+        {
+          title: "API",
+          narration,
+          caption: "API",
+          beats: thirds.map((part, index) => ({
+            id: `beat-${index}`,
+            text: part.join(" "),
+            visual: "Demonstrate a concrete technical action",
+          })),
+        },
+        { id: "fixture", row: 2, idea: "API", description: "", narration: "" },
+      ),
+    /generic introduction/i,
+  );
+});
+
+test("explanation quality rejects a generic example despite valid formatting", () => {
+  assert.throws(
+    () =>
+      requireExplanationQuality({
+        clarity: 92,
+        accuracy: 90,
+        exampleUsefulness: 55,
+        authenticity: 88,
+        issues: ["The example could describe any topic"],
+      }),
+    /example usefulness/i,
   );
 });

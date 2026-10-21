@@ -2,17 +2,17 @@
 
 ## Active module boundaries
 
-| Module | Responsibility | Caller interface |
-| --- | --- | --- |
-| Workflow | Serial stages, persisted progress, terminal reporting | runWorkflow(dependencies) |
-| Sheets | Header aliases, ordered intake, stable IDs, control flag, summaries | prepare / intake / save / pause |
-| Content | Structured narration, immutable supplied script, beat coverage, quality grade | createContent |
-| Voice | CPU cloning, audible output, pacing and normalization | createVoice |
-| Captions | Mandatory AssemblyAI transcription and actual-word timing alignment | createCaptions / alignCaptions |
-| Rendering | Scene code validation, isolated SVG/HTML animation, sampled quality gates, frame encoding, captions and audio | renderVideo |
-| Publishing | One attempt per platform, provider verification, partial results, consumer-safe staging cleanup | Publisher.publish / cleanup |
-| Workspace | Job-scoped generated files and bounded deletion | createWorkspace |
-| Operations | Validated configuration, bounded requests/processes, cancellation, email | Internal adapters |
+| Module     | Responsibility                                                                                                | Caller interface                |
+| ---------- | ------------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| Workflow   | Serial stages, persisted progress, terminal reporting                                                         | runWorkflow(dependencies)       |
+| Sheets     | Header aliases, ordered intake, stable IDs, control flag, summaries                                           | prepare / intake / save / pause |
+| Content    | Structured narration, immutable supplied script, beat coverage, quality grade                                 | createContent                   |
+| Voice      | CPU cloning, audible output, pacing and normalization                                                         | createVoice                     |
+| Captions   | Mandatory AssemblyAI transcription and actual-word timing alignment                                           | createCaptions / alignCaptions  |
+| Rendering  | Scene code validation, isolated SVG/HTML animation, sampled quality gates, frame encoding, captions and audio | renderVideo                     |
+| Publishing | One attempt per platform, provider verification, partial results, consumer-safe staging cleanup               | Publisher.publish / cleanup     |
+| Workspace  | Job-scoped generated files and bounded deletion                                                               | createWorkspace                 |
+| Operations | Validated configuration, bounded requests/processes, cancellation, email                                      | Internal adapters               |
 
 Animation and reel assembly now share the rendering module. Presenter, lip-sync, display capture, and interactive editor steps are absent from the production path. Legacy source remains pending migration review; this is not a claim that every existing JavaScript file has been converted.
 
@@ -58,9 +58,11 @@ Publication journal checkpoints persist staging ownership, active consumers and 
 
 Typed finalization outcomes separate published posts from cleanup, durable persistence, pause and notification. Required persistence/cleanup failures make the Action fail even if every post was published. Notifications are recorded as pending before delivery, then sent/failed afterward. Email-only failure still does not change remote publication success. Task-ID write failures propagate as infrastructure incidents instead of marking valid rows Invalid.
 
-Generated plans now include a shared example, payoff, object registry, colors and layout rules. Independent custom AI scenes use that shared direction and must show causal diagram changes. Code restrictions cover more asynchronous/callback capabilities, CSS animations are disabled, and the one repair attempt gets a fresh browser. Sampled visual checks include more timeline/word anchors, text density, SVG readability and measurable motion; grades represent structural checks, not artistic quality or factual truth.
+Generated plans now include a shared example, payoff, object registry, colors and fixed 900×1310 object boxes. Independent custom AI scenes must expose their persistent object IDs and settle them into those boxes; sampled-frame validation rejects missing, resized or drifting objects. They must show causal diagram changes. Code restrictions cover more asynchronous/callback capabilities, CSS animations are disabled, and the one repair attempt gets a fresh browser. Sampled visual checks include more timeline/word anchors, text density, SVG readability and measurable motion.
 
-Captions follow punctuation, pause boundaries and a conservative text budget, with a short pause hold and stable layout. The caption DOM updates only when its displayed state changes. Music fades in/out and retains voice ducking. Narration is checked for audible energy after processing; final mix loudness/true peak are measured. Supplied narration keeps exact punctuation/wording. Stage timings, orchestrator/voice peak RSS and render/audio measurements are logged and saved with job progress for the real Actions benchmark.
+Content receives both deterministic structural validation and a separate Gemini audit for clarity, technical accuracy, example usefulness and authenticity. Generic introductions, engagement bait, stage directions and prompt labels fail rather than merely lowering a score. This remains an automated quality heuristic, not independent fact verification.
+
+Captions follow punctuation, pause boundaries and a conservative text budget, with a short pause hold and stable layout. The caption DOM updates only when its displayed state changes. Music fades in/out and retains voice ducking. Narration is checked for audible energy and clipping before processing. Voice duration is accepted naturally within 40–75 seconds without global tempo correction. The final mix disables limiter gain compensation, preserves encoding headroom and rejects encoded true peaks above −1.2 dB. Supplied narration keeps exact punctuation/wording. Stage timings, orchestrator/voice peak RSS and render/audio measurements are logged and saved with job progress for the real Actions benchmark.
 
 Legacy runtime retirement and exact CPU/model dependency pinning remain follow-up work after a complete production integration run. Existing uncommitted legacy caller edits remain preserved. No additional provider, AI visual critic, output archive, presenter or automatic job recovery was introduced.
 

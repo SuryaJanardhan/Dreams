@@ -83,7 +83,7 @@ export function sceneGenerator(config: Config, gemini: Gemini): SceneGenerator {
         config.GEMINI_API_KEY_FOR_VISUALS,
         `Write a custom TypeScript animation scene for a technical educational reel. Output JSON {source: string}. Explain this beat: ${JSON.stringify(beat)}. Actual timed narration words: ${JSON.stringify(words)}. Shared direction for the WHOLE reel: ${JSON.stringify(direction ?? null)}. Reuse its object IDs, labels, colors and example, so adjacent scenes explain the same system. Show the causal event described in this beat, not just animated typography. Preserve stable positions and diagram vocabulary. Hold completed diagrams briefly rather than continuously shaking every object.
 Import type {SceneContext,Scene} from './scene-contract'; export function createScene(context:SceneContext):Scene. Context root is a 900x1310 safe-area element; timeline is an already paused GSAP timeline, duration is scene seconds, words are relative-time anchors. Build original HTML/SVG technical diagrams with dark background, cyan/magenta accents, clear connections, staged transitions, minimal keywords. No humans/presenter or captions. Text >=40px; keep every visible element inside root. The renderer owns all timing and captions.
-Use context.timeline.to/fromTo/set at explicit word/beat times; do not play timeline, add callbacks, independent timelines, clocks, timers, CSS animation, imports except the type contract, remote assets, canvas, video, external URLs, random, any, type assertions, eval, or global state. Use only context.root and provided timeline. Animate meaningful content throughout scene; avoid blank openings. SVG connectors must be precise. Return {dispose(){context.root.replaceChildren();}}. Ensure calling timeline.seek at any scene time produces the intended visual state without callbacks. ${feedback ? `Repair the prior rejected scene. Errors: ${feedback}` : ""}`,
+Create every shared-direction object in every scene, set data-object-id to its exact ID, preserve its label/color, and settle it into its declared box by the end of the beat. Use context.timeline.to/fromTo/set at explicit word/beat times; do not play timeline, add callbacks, independent timelines, clocks, timers, CSS animation, imports except the type contract, remote assets, canvas, video, external URLs, random, any, type assertions, eval, or global state. Use only context.root and provided timeline. Animate meaningful content throughout scene; avoid blank openings. SVG connectors must be precise. Return {dispose(){context.root.replaceChildren();}}. Ensure calling timeline.seek at any scene time produces the intended visual state without callbacks. ${feedback ? `Repair the prior rejected scene. Errors: ${feedback}` : ""}`,
         sourceSchema,
       );
       return result.source;
@@ -192,7 +192,48 @@ async function setTime(
     })),
   );
 }
-async function inspectFrame(frame: Frame, page: Page): Promise<Buffer> {
+interface PositionedObject {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export function objectGeometryErrors(
+  expected: VisualDirection["objects"],
+  actual: PositionedObject[],
+) {
+  const errors: string[] = [];
+  for (const object of expected) {
+    const found = actual.find((candidate) => candidate.id === object.id);
+    if (!found) {
+      errors.push(`Persistent object missing: ${object.id}`);
+      continue;
+    }
+    if (
+      Math.abs(found.x - object.box.x) > 70 ||
+      Math.abs(found.y - object.box.y) > 70
+    )
+      errors.push(`Persistent object position drifted: ${object.id}`);
+    const widthRatio = found.width / object.box.width;
+    const heightRatio = found.height / object.box.height;
+    if (
+      widthRatio < 0.6 ||
+      widthRatio > 1.4 ||
+      heightRatio < 0.6 ||
+      heightRatio > 1.4
+    )
+      errors.push(`Persistent object size drifted: ${object.id}`);
+  }
+  return errors;
+}
+
+async function inspectFrame(
+  frame: Frame,
+  page: Page,
+  direction?: VisualDirection,
+): Promise<Buffer> {
   const errors = await frame.evaluate(() => {
     const root = document.getElementById("root");
     if (!root) return ["Missing root"];
@@ -231,6 +272,24 @@ async function inspectFrame(frame: Frame, page: Page): Promise<Buffer> {
   const stats = await sharp(buffer).stats();
   if (stats.channels.every((channel) => channel.stdev < 3))
     errors.push("Blank or uniform scene");
+  if (direction) {
+    const actual = await frame.evaluate(() => {
+      const root = document.getElementById("root");
+      if (!root) return [];
+      const area = root.getBoundingClientRect();
+      return [...root.querySelectorAll("[data-object-id]")].map((element) => {
+        const box = element.getBoundingClientRect();
+        return {
+          id: element.getAttribute("data-object-id") ?? "",
+          x: box.left - area.left,
+          y: box.top - area.top,
+          width: box.width,
+          height: box.height,
+        };
+      });
+    });
+    errors.push(...objectGeometryErrors(direction.objects, actual));
+  }
   const caption = await page
     .locator("#captions")
     .evaluate(
@@ -345,7 +404,11 @@ export async function renderVideo(
               captionAt(phrases, beat.start + relative),
               beat.start + relative,
             );
-            const sample = await inspectFrame(frame, page);
+            const sample = await inspectFrame(
+              frame,
+              page,
+              relative >= duration * 0.95 ? plan.direction : undefined,
+            );
             if (previous) {
               let difference = 0;
               for (let i = 0; i < sample.length; i++)
@@ -512,7 +575,7 @@ export async function renderVideo(
         "-i",
         resolve(config.root, "assets/Bgm.m4a"),
         "-filter_complex",
-        `[1:a]adelay=${intro}|${intro},apad,asplit=2[voice][side];[2:a]volume=0.2,afade=t=in:st=0:d=0.35,afade=t=out:st=${Math.max(0, total - 0.6)}:d=0.6[music];[music][side]sidechaincompress=threshold=0.015:ratio=8:attack=10:release=300[ducked];[voice][ducked]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.89[mix]`,
+        `[1:a]adelay=${intro}|${intro},apad,asplit=2[voice][side];[2:a]volume=0.12,afade=t=in:st=0:d=0.35,afade=t=out:st=${Math.max(0, total - 0.6)}:d=0.6[music];[music][side]sidechaincompress=threshold=0.015:ratio=8:attack=10:release=300[ducked];[voice][ducked]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.78:level=false[mix]`,
         "-map",
         "0:v",
         "-map",

@@ -4,6 +4,14 @@ import type { Config } from "../operations/config.js";
 import type { ContentPlan, Narration, Workspace } from "../domain.js";
 import { command, assertAudio } from "../operations/media.js";
 import { twice } from "../operations/http.js";
+
+export function validateNarrationDuration(duration: number) {
+  if (duration < 40 || duration > 75)
+    throw new Error(
+      `Narration must end naturally within 40–75 seconds: ${duration.toFixed(1)}s`,
+    );
+}
+
 export function createVoice(config: Config, signal: () => AbortSignal) {
   return (plan: ContentPlan, workspace: Workspace): Promise<Narration> =>
     twice(async () => {
@@ -30,46 +38,23 @@ export function createVoice(config: Config, signal: () => AbortSignal) {
         .object({ peakRssMb: z.number().positive() })
         .parse(JSON.parse(engineOutput.trim().split("\n").at(-1) ?? "{}"));
       let info = await assertAudio(raw, signal());
-      if (info.duration < 55 || info.duration > 65) {
-        const ratio = info.duration / 60;
-        if (ratio < 0.8 || ratio > 1.25)
-          throw new Error(
-            `Narration ${info.duration.toFixed(1)}s cannot be naturally adjusted to 60s`,
-          );
-        await command(
-          "ffmpeg",
-          [
-            "-y",
-            "-i",
-            raw,
-            "-af",
-            `atempo=${ratio},loudnorm=I=-16:TP=-1.5:LRA=11`,
-            "-ar",
-            "24000",
-            path,
-          ],
-          signal(),
-        );
-      } else
-        await command(
-          "ffmpeg",
-          [
-            "-y",
-            "-i",
-            raw,
-            "-af",
-            "loudnorm=I=-16:TP=-1.5:LRA=11",
-            "-ar",
-            "24000",
-            path,
-          ],
-          signal(),
-        );
+      validateNarrationDuration(info.duration);
+      await command(
+        "ffmpeg",
+        [
+          "-y",
+          "-i",
+          raw,
+          "-af",
+          "loudnorm=I=-16:TP=-1.5:LRA=11",
+          "-ar",
+          "24000",
+          path,
+        ],
+        signal(),
+      );
       info = await assertAudio(path, signal());
-      if (info.duration < 55 || info.duration > 65)
-        throw new Error(
-          `Narration duration outside 55–65s after pacing: ${info.duration}`,
-        );
+      validateNarrationDuration(info.duration);
       return { path, ...info, peakRssMb: engineMetrics.peakRssMb };
     });
 }

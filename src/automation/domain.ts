@@ -101,7 +101,13 @@ export interface Finalization {
 export interface VisualDirection {
   example: string;
   payoff: string;
-  objects: { id: string; label: string; role: string; color: string }[];
+  objects: {
+    id: string;
+    label: string;
+    role: string;
+    color: string;
+    box: { x: number; y: number; width: number; height: number };
+  }[];
   rules: string;
 }
 export interface Progress {

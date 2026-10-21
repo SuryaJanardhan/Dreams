@@ -11,6 +11,7 @@ import {
   measureMix,
 } from "../src/automation/operations/media.js";
 import { createWorkspace } from "../src/automation/workspace/index.js";
+import { validateNarrationDuration } from "../src/automation/voice/index.js";
 test("captions follow punctuation and hold a phrase briefly across a breath", () => {
   const words = [
     { text: "Request", start: 0, end: 0.3 },
@@ -29,6 +30,12 @@ test("captions follow punctuation and hold a phrase briefly across a breath", ()
     ["Server", "responds."],
   );
   assert.deepEqual(captionAt(phrases, 2), []);
+});
+test("natural narration duration is accepted without forcing exactly sixty seconds", () => {
+  assert.doesNotThrow(() => validateNarrationDuration(47));
+  assert.doesNotThrow(() => validateNarrationDuration(70));
+  assert.throws(() => validateNarrationDuration(30), /40–75/);
+  assert.throws(() => validateNarrationDuration(80), /40–75/);
 });
 test("control plane works without unrelated ML or publishing credentials", () => {
   const config = loadSheetsConfig({
@@ -64,6 +71,24 @@ test("audio signal validation rejects silent narration and measures a real mix",
       signal,
     );
     await assert.rejects(assertAudio(silent, signal), /audible energy/);
+    const clipped = workspace.file("clipped.wav");
+    await command(
+      "ffmpeg",
+      [
+        "-y",
+        "-f",
+        "lavfi",
+        "-i",
+        "sine=frequency=440:sample_rate=24000",
+        "-af",
+        "volume=100",
+        "-t",
+        "1",
+        clipped,
+      ],
+      signal,
+    );
+    await assert.rejects(assertAudio(clipped, signal), /clipp/i);
     const audible = workspace.file("audible.wav");
     await command(
       "ffmpeg",
