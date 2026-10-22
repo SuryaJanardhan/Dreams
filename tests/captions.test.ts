@@ -1,14 +1,21 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { alignCaptions } from "../src/automation/captions/index.js";
-const plan = {
+import type { ContentPlan } from "../src/automation/domain.js";
+const plan: ContentPlan = {
+  type: "question",
   title: "API",
   narration: "An API connects software",
-  caption: "API",
   beats: [
-    { id: "one", text: "An API", visual: "interface" },
-    { id: "two", text: "connects software", visual: "connection" },
+    { id: "one", text: "An API", purpose: "Introduce the interface" },
+    { id: "two", text: "connects software", purpose: "Show the connection" },
   ],
+  copies: {
+    youtube: { title: "API", description: "API" },
+    instagram: { title: "API", description: "API" },
+    facebook: { title: "API", description: "API" },
+  },
+  research: { mode: "gemini-best-effort", summary: "Fixture", sources: [] },
   grade: 100,
 };
 const narration = { path: "fixture.wav", duration: 2, sampleRate: 24000 };

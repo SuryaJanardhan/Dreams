@@ -2,9 +2,9 @@
 
 The active production entry point is `src/automation/main.ts`, launched by `npm run automation` on GitHub Actions. The new path uses strict TypeScript for Sheets, content, captions, frame rendering, publishing, and operations; a minimal Python engine synthesizes the cloned voice on CPU.
 
-One eligible Sheet row becomes a narrated technical explainer, with custom generated animation, highlighted captions, background music, and a cover. The same 1080×1920, 60 fps video is submitted to YouTube, Instagram, and Facebook. A job is Completed only when all three providers confirm publication and return canonical links.
+One eligible Sheet row becomes a narrated technical explainer in a clean white diagram style. AI produces typed story and visual plans; trusted TypeScript renders stable diagrams, highlighted captions, restrained motion, quiet music, and selective sound cues. No generated executable scene code or cover card is used. The same 1080×1920, 60 fps master is submitted to YouTube, Instagram, and Facebook with platform-specific descriptions. A job is Completed only when all three providers confirm publication and return canonical links.
 
-Start with [implementation and operation notes](docs/IMPLEMENTATION.md), [project map](docs/PROJECT_MAP.md), and [agreed decisions](docs/DECISIONS.md). Configure Actions secrets from `.env.example`. The twice-daily schedule is 06:00 and 18:00 UTC; scheduled execution may be delayed by GitHub.
+Start with the [visual-pipeline plan](docs/MAIN_VISUAL_PIPELINE_PLAN.md), [implementation notes](docs/IMPLEMENTATION.md), and [effective decisions](docs/DECISIONS.md). Configure Actions secrets from `.env.example`. The twice-daily schedule is 06:00 and 18:00 UTC; scheduled execution may be delayed by GitHub.
 
 Failures preserve progress and successful links, set the Sheet's AutomationControl PAUSED flag, clean generated work where safe, and email outcomes. No automatic repost or provider fallback occurs. Clear PAUSED after investigating; terminal rows are not automatically requeued.
 
@@ -22,10 +22,12 @@ The legacy pipeline and presenter code are separate from the active Actions prod
 **Dreams AI** is an end-to-end automated pipeline that transforms Google Sheet ideas into high-fidelity AI videos—running entirely on GitHub Actions for $0 cost.
 
 ---
+
 **Estimated Run Time for full Automation**
 **Note**: This is an estimated run time and may vary depending on the speed of the GitHub Actions runner and the size of the video. Normal Lip-Sync takes only 20-25 minutes but the repo workflow has advanced GAN to increase the final vedio output quality which takes more time on CPU.
 
 **CPU**:
+
 - **Script Generation**: 3 minutes
 - **Voice Cloning**: 7 minutes
 - **Lip-Sync**: 4 hours( Advanced GAN)
@@ -34,6 +36,7 @@ The legacy pipeline and presenter code are separate from the active Actions prod
 - **Total**: 4 hours 40 minutes
 
 **GPU**:
+
 - **Script Generation**: 3 minutes
 - **Voice Cloning**: 7 minutes
 - **Lip-Sync**: 20 minutes
@@ -42,10 +45,12 @@ The legacy pipeline and presenter code are separate from the active Actions prod
 - **Total**: 1 hour 2 minutes
 
 ## 💡 Motivation
+
 > It all started from a young boy who had intrest in doing content on social media.
 > "Ideas arrive at any time; development shouldn't be the bottleneck. Dreams AI bridges the gap between a single-row thought and a multi-platform social media presence, handling the script, voice, visuals, and distribution while you sleep."
 
 ## 🏗️ How it Works
+
 1.  **Trigger**: GitHub Actions wakes up via a **Cron Job** and checks your Google Sheet for rows marked as "Not Posted".
 2.  **Voice Cloning**: Your personalized AI voice is synthesized using a reference audio sample in `assets/Base-audio.mp3`.
 3.  **Lip-Sync**: The generated audio is synced to a base video in `assets/Base-vedio.mp4`. (Auto-downloaded via secret if missing).
@@ -58,16 +63,16 @@ The legacy pipeline and presenter code are separate from the active Actions prod
 
 Your Google Sheet must have the following headers (case-insensitive):
 
-| Column Header | Description |
-| :--- | :--- |
-| **SNO** | Serial Number. |
-| **Idea** | The theme/topic for the AI to expand into a script. |
-| **Description** | Context for the AI to understand the core message. |
-| **Status** | Must be `Not Posted` to trigger. Updates to `Processing` or `Posted`. |
-| **YT Link** | (Output) Updated with the Published YouTube link. |
-| **Insta Link** | (Output) Updated with the Published Instagram Reel link. |
-| **FB Link** | (Output) Updated with the Published Facebook Video link. |
-| **Timestamp** | (Output) Updated with completion time. |
+| Column Header   | Description                                                           |
+| :-------------- | :-------------------------------------------------------------------- |
+| **SNO**         | Serial Number.                                                        |
+| **Idea**        | The theme/topic for the AI to expand into a script.                   |
+| **Description** | Context for the AI to understand the core message.                    |
+| **Status**      | Must be `Not Posted` to trigger. Updates to `Processing` or `Posted`. |
+| **YT Link**     | (Output) Updated with the Published YouTube link.                     |
+| **Insta Link**  | (Output) Updated with the Published Instagram Reel link.              |
+| **FB Link**     | (Output) Updated with the Published Facebook Video link.              |
+| **Timestamp**   | (Output) Updated with completion time.                                |
 
 ---
 
@@ -77,6 +82,7 @@ For the best results, your template assets must follow these constraints:
 **For local use case you must keep the below mentioned three files(exact file names) in the assets directory**
 
 ### 🎬 `assets/Base-vedio.mp4`
+
 - **Fallback**: If not checked into Git, define `BASE_VIDEO_DRIVE_ID` in GitHub Secrets to download it on-the-fly.
 - **Duration**: **100 seconds minimum** (Ensures enough buffer for long scripts).
 - **Framing**: **Close-up or Half-body** shot.
@@ -84,15 +90,18 @@ For the best results, your template assets must follow these constraints:
 - **Movement**: Natural blinking and slight head movement is okay, but avoid sudden shifts.
 
 ### 🎤 `assets/Base-audio.mp3`
+
 - **Duration**: **< 10 seconds** (Best for zero-shot voice cloning quality).
 - **Quality**: Crystal clear audio, no background noise, minimal reverb.
 
 ### 🎤 `assets/Bgm.m4a`
+
 - **Purpose**: Background music for the final reel.
 - **Default Volume**: **0.2 (20%)** in the automated pipeline.
 - **Formats Supported**: `.m4a`, `.mp3`, `.wav`.
 
 ### 🌟 Publishing Capabilities
+
 - **Triple-Platform Push**: Automatically uploads unique reels to **YouTube Shorts**, **Instagram Reels**, and **Facebook Reels**.
 - **Deterministic Voice**: Uses **Voicebox** (Qwen3-TTS) as the mandatory audio engine.
 - **Supabase Staging**: Requires a storage bucket named `videos` for temporary hosting during Meta uploads.
@@ -104,35 +113,36 @@ For the best results, your template assets must follow these constraints:
 
 Add these to your **Settings > Secrets and variables > Actions**.
 
-| Secret | Description |
-| :--- | :--- |
-| `BASE_VIDEO_DRIVE_ID` | Google Drive ID of your base video (e.g., `1Tc0...`). |
-| `GEMINI_API_KEY` | Primary key for scripts and logic. |
-| `GEMINI_API_KEY_FOR_VISUALS` | Primary key for animations and visuals. |
-| `GROQ_API_KEY` | **Fallback key** for script and caption generation. |
-| `ASSEMBLYAI_API_KEY` | Required for automatic subtitle (SRT) generation. |
-| `GOOGLE_SHEET_ID` | The ID from your sheet's URL. |
-| `GOOGLE_CREDENTIALS` | Service Account JSON. |
-| `GOOGLE_CLIENT_ID` | OAuth Client ID for YouTube. |
-| `GOOGLE_CLIENT_SECRET` | OAuth Client Secret for YouTube. |
-| `YOUTUBE_REFRESH_TOKEN` | OAuth Refresh Token for YouTube. |
-| `INSTAGRAM_ACCOUNT_ID` | Your Instagram Business Account ID. |
-| `INSTAGRAM_ACCESS_TOKEN` | Long-lived Facebook User Access Token. |
-| `FACEBOOK_PAGE_ID` | Your target Facebook Page ID. |
-| `FACEBOOK_ACCESS_TOKEN` | Permanent Page Access Token. |
-| `SUPABASE_URL` | Your Supabase Project URL. |
-| `SUPABASE_SERVICE_ROLE_KEY` | Service Role Key for bucket access. |
-| `SUPABASE_BUCKET` | Bucket name (default: `videos`). |
-| `EMAIL_USER` | Gmail address for login. |
-| `EMAIL_APP_PASSWORD` | Gmail App Password. |
-| `NOTIFICATION_EMAIL` | Destination for completion links. |
-| `USE_PREMIUM_WAV2LIP` | Set to `true` to enable **GFPGAN** face restoration (High CPU usage). |
+| Secret                       | Description                                                           |
+| :--------------------------- | :-------------------------------------------------------------------- |
+| `BASE_VIDEO_DRIVE_ID`        | Google Drive ID of your base video (e.g., `1Tc0...`).                 |
+| `GEMINI_API_KEY`             | Primary key for scripts and logic.                                    |
+| `GEMINI_API_KEY_FOR_VISUALS` | Primary key for animations and visuals.                               |
+| `GROQ_API_KEY`               | **Fallback key** for script and caption generation.                   |
+| `ASSEMBLYAI_API_KEY`         | Required for automatic subtitle (SRT) generation.                     |
+| `GOOGLE_SHEET_ID`            | The ID from your sheet's URL.                                         |
+| `GOOGLE_CREDENTIALS`         | Service Account JSON.                                                 |
+| `GOOGLE_CLIENT_ID`           | OAuth Client ID for YouTube.                                          |
+| `GOOGLE_CLIENT_SECRET`       | OAuth Client Secret for YouTube.                                      |
+| `YOUTUBE_REFRESH_TOKEN`      | OAuth Refresh Token for YouTube.                                      |
+| `INSTAGRAM_ACCOUNT_ID`       | Your Instagram Business Account ID.                                   |
+| `INSTAGRAM_ACCESS_TOKEN`     | Long-lived Facebook User Access Token.                                |
+| `FACEBOOK_PAGE_ID`           | Your target Facebook Page ID.                                         |
+| `FACEBOOK_ACCESS_TOKEN`      | Permanent Page Access Token.                                          |
+| `SUPABASE_URL`               | Your Supabase Project URL.                                            |
+| `SUPABASE_SERVICE_ROLE_KEY`  | Service Role Key for bucket access.                                   |
+| `SUPABASE_BUCKET`            | Bucket name (default: `videos`).                                      |
+| `EMAIL_USER`                 | Gmail address for login.                                              |
+| `EMAIL_APP_PASSWORD`         | Gmail App Password.                                                   |
+| `NOTIFICATION_EMAIL`         | Destination for completion links.                                     |
+| `USE_PREMIUM_WAV2LIP`        | Set to `true` to enable **GFPGAN** face restoration (High CPU usage). |
 
 ---
 
 ## 🚀 Setup & Installation
 
 ### 🛠️ Local Setup (npm & pip)
+
 Follow these steps to run the pipeline on your local machine:
 
 1.  **Clone & Install**:
@@ -181,18 +191,21 @@ Follow these steps to run the pipeline on your local machine:
     ```
 
 ## 📝 Notes
--  **Mandatory Voicebox**: Gemini TTS support has been removed to ensure a consistent, professional brand voice. You **must** have `Base-audio.mp3` in your assets.
--  **Fail-Fast Workflow**: If Voicebox synthesis fails, the workflow will stop immediately to avoid generating low-quality content, and you will receive a notification via the configured email service.
--  **My suggestions**:
--  You can see the global logs while running the automation. If you encounter any issue, the detailed logs help you to understand the error, or you can raise an issue via github.
--  The repo is not so clean and modularized, and soon I will make it clean and modularized.
--  If you really want deterministic results, I recommend using the above raw approach instead of Docker, since I have not tried the new version of this repo on Docker yet. Feel free to raise an issue particularly for the Docker setup and run.
--  You can customize several sections of this repo as per your requirements.
+
+- **Mandatory Voicebox**: Gemini TTS support has been removed to ensure a consistent, professional brand voice. You **must** have `Base-audio.mp3` in your assets.
+- **Fail-Fast Workflow**: If Voicebox synthesis fails, the workflow will stop immediately to avoid generating low-quality content, and you will receive a notification via the configured email service.
+- **My suggestions**:
+- You can see the global logs while running the automation. If you encounter any issue, the detailed logs help you to understand the error, or you can raise an issue via github.
+- The repo is not so clean and modularized, and soon I will make it clean and modularized.
+- If you really want deterministic results, I recommend using the above raw approach instead of Docker, since I have not tried the new version of this repo on Docker yet. Feel free to raise an issue particularly for the Docker setup and run.
+- You can customize several sections of this repo as per your requirements.
 
 **Visuals are a bottleneck; refactoring the base prompt using a strong model wins**
 
 ### 🛡️ AI API Resilience (Groq Fallback)
+
 The system is built to be "Self-Healing." If your Gemini API keys are expired, hit rate limits, or encounter network issues:
+
 1. It will automatically retry with any other available Gemini keys.
 2. If all Gemini keys fail, it will switch to **Groq (Llama 3.3)** as a secondary provider for Scripts, Visual Prompts, and Social Captions.
 3. This ensures your automation pipeline never stops mid-run.
@@ -200,6 +213,7 @@ The system is built to be "Self-Healing." If your Gemini API keys are expired, h
 ---
 
 ### 🐳 Dockerized Setup (Recommended)
+
 Run the entire pipeline in a consistent, isolated environment:
 
 1.  **Build the Container**:
@@ -212,34 +226,39 @@ Run the entire pipeline in a consistent, isolated environment:
     ```bash
     docker-compose up
     ```
-    *Note: The container will handle all system dependencies like FFmpeg and Playwright automatically.*
+    _Note: The container will handle all system dependencies like FFmpeg and Playwright automatically._
 
 ---
 
 ## 📜 Documentation
+
 For a deep dive into setting up GitHub Actions infrastructure and secrets, see **[.github/workflow.md](.github/workflow.md)**.
 
 ## Note
+
 - This is only a prototype, it is not a production-ready system.
 
 ## Tips
--  Refactor script, captions, descriptions prompts to AI as per your need.
--  Refactor the visual prompt to AI as per your need.
--  Refactor sheet service as per your sheet layout.
--  Modify the email service as per your need.
--  Update with new social services if u want to add a new platform.
--  Utilize strong models if you have access to them (e.g. Gemini 3 Pro, GPT-5, etc.).
+
+- Refactor script, captions, descriptions prompts to AI as per your need.
+- Refactor the visual prompt to AI as per your need.
+- Refactor sheet service as per your sheet layout.
+- Modify the email service as per your need.
+- Update with new social services if u want to add a new platform.
+- Utilize strong models if you have access to them (e.g. Gemini 3 Pro, GPT-5, etc.).
 
 ## Thanks
--  Thanks to the developers of Wav2Lip, Voicebox.
--  Special thanks to the repo [https://github.com/prasannathapa/reel-composer] creator prasannathapa inspired me to merge my own old version with reel-composer.
+
+- Thanks to the developers of Wav2Lip, Voicebox.
+- Special thanks to the repo [https://github.com/prasannathapa/reel-composer] creator prasannathapa inspired me to merge my own old version with reel-composer.
 
 ## Contributions
--  Feel free to open an issue or a pull request.
--  Willing to discuss new features or improvements.
+
+- Feel free to open an issue or a pull request.
+- Willing to discuss new features or improvements.
 
 ## License
 
--  This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+- This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 </details>

@@ -2,14 +2,18 @@ import { randomUUID } from "node:crypto";
 import type {
   CaptionTrack,
   ContentPlan,
+  ResearchPacket,
   Narration,
   Outcome,
   Progress,
   Publication,
   PublicationJournal,
+  PrimitiveSpec,
   Finalization,
   RenderedVideo,
   Task,
+  ValidatedAsset,
+  VisualPlan,
   Workspace,
 } from "../domain.js";
 import { initialPublications, message } from "../domain.js";
@@ -24,13 +28,41 @@ export interface WorkflowDependencies {
   save(progress: Progress): Promise<void>;
   pause(reason: string): Promise<void>;
   workspace(jobId: string): Promise<Workspace>;
-  content(task: Task): Promise<ContentPlan>;
+  research(task: Task): Promise<ResearchPacket>;
+  content(task: Task, research: ResearchPacket): Promise<ContentPlan>;
+  promotedPrimitives(): Promise<PrimitiveSpec[]>;
+  visualPlan(
+    task: Task,
+    content: ContentPlan,
+    promotedPrimitives: PrimitiveSpec[],
+  ): Promise<VisualPlan>;
+  recordPrimitiveReviews(
+    jobId: string,
+    primitives: PrimitiveSpec[],
+  ): Promise<string>;
+  assets(
+    task: Task,
+    content: ContentPlan,
+    visualPlan: VisualPlan,
+    workspace: Workspace,
+  ): Promise<ValidatedAsset[]>;
   voice(plan: ContentPlan, workspace: Workspace): Promise<Narration>;
   captions(plan: ContentPlan, narration: Narration): Promise<CaptionTrack>;
   render(
     plan: ContentPlan,
+    visualPlan: VisualPlan,
+    assets: ValidatedAsset[],
     narration: Narration,
     captions: CaptionTrack,
+    workspace: Workspace,
+  ): Promise<RenderedVideo>;
+  quality(
+    plan: ContentPlan,
+    visualPlan: VisualPlan,
+    assets: ValidatedAsset[],
+    narration: Narration,
+    captions: CaptionTrack,
+    video: RenderedVideo,
     workspace: Workspace,
   ): Promise<RenderedVideo>;
   publish(
@@ -113,8 +145,33 @@ export async function runWorkflow(
         await save();
         return result;
       };
-      const plan = await step("content", () => deps.content(intake.task));
+      const research = await step("research", () => deps.research(intake.task));
+      progress.sources = research.sources;
+      const plan = await step("content", () =>
+        deps.content(intake.task, research),
+      );
       progress.grades.content = plan.grade;
+      const promotedPrimitives = await deps.promotedPrimitives();
+      const visualPlan = await step("visual-planning", () =>
+        deps.visualPlan(intake.task, plan, promotedPrimitives),
+      );
+      const trusted = new Set(promotedPrimitives.map((item) => item.id));
+      const newPrimitives = visualPlan.proposedPrimitives.filter(
+        (item) => !trusted.has(item.id),
+      );
+      progress.primitiveReviews = newPrimitives.map((item) => ({
+        id: item.id,
+        status: "pending",
+        spec: item,
+      }));
+      if (newPrimitives.length)
+        progress.primitiveReviewUrl = await deps.recordPrimitiveReviews(
+          progress.jobId,
+          newPrimitives,
+        );
+      const assets = await step("assets", () =>
+        deps.assets(intake.task, plan, visualPlan, work),
+      );
       const narration = await step("voice", () => deps.voice(plan, work));
       if (narration.peakRssMb)
         progress.metrics = {
@@ -125,14 +182,25 @@ export async function runWorkflow(
         deps.captions(plan, narration),
       );
       const video = await step("rendering", () =>
-        deps.render(plan, narration, captions, work),
+        deps.render(plan, visualPlan, assets, narration, captions, work),
       );
-      progress.grades.rendering = video.grade;
-      if (video.checks)
-        progress.metrics = { ...progress.metrics, ...video.checks };
+      const checkedVideo = await step("quality", () =>
+        deps.quality(
+          plan,
+          visualPlan,
+          assets,
+          narration,
+          captions,
+          video,
+          work,
+        ),
+      );
+      progress.grades.rendering = checkedVideo.grade;
+      if (checkedVideo.checks)
+        progress.metrics = { ...progress.metrics, ...checkedVideo.checks };
       await step("publishing", () =>
         deps.publish(
-          video,
+          checkedVideo,
           plan,
           work,
           async (result) => {

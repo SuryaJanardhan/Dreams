@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn, execFileSync, type ChildProcess } from "node:child_process";
 import { mkdtemp, rm, writeFile, readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { createServer } from "node:net";
@@ -133,7 +134,15 @@ async function main() {
       resolve(root, "reel-composer"),
     );
     await ready(editorBase, editor);
-    const browser = await chromium.launch({ headless: true });
+    const executablePath =
+      process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ||
+      (existsSync("/usr/bin/google-chrome")
+        ? "/usr/bin/google-chrome"
+        : undefined);
+    const browser = await chromium.launch({
+      headless: true,
+      ...(executablePath ? { executablePath } : {}),
+    });
     try {
       const page = await browser.newPage({
         permissions: ["clipboard-read", "clipboard-write"],
@@ -196,7 +205,7 @@ async function main() {
     }
     const legacyBrowser = await puppeteer.launch({
       headless: true,
-      executablePath: chromium.executablePath(),
+      executablePath: executablePath ?? chromium.executablePath(),
       args: ["--no-sandbox"],
     });
     try {

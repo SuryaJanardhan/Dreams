@@ -33,9 +33,20 @@ test("captions follow punctuation and hold a phrase briefly across a breath", ()
 });
 test("natural narration duration is accepted without forcing exactly sixty seconds", () => {
   assert.doesNotThrow(() => validateNarrationDuration(47));
-  assert.doesNotThrow(() => validateNarrationDuration(70));
-  assert.throws(() => validateNarrationDuration(30), /40–75/);
-  assert.throws(() => validateNarrationDuration(80), /40–75/);
+  assert.doesNotThrow(() => validateNarrationDuration(65));
+  assert.throws(() => validateNarrationDuration(30), /35–65/);
+  assert.throws(() => validateNarrationDuration(70), /35–65/);
+});
+test("caption phrases never exceed five words", () => {
+  const words = Array.from({ length: 11 }, (_item, index) => ({
+    text: `word${index}`,
+    start: index * 0.2,
+    end: index * 0.2 + 0.15,
+  }));
+  assert.deepEqual(
+    captionPhrases(words).map((phrase) => phrase.words.length),
+    [5, 5, 1],
+  );
 });
 test("control plane works without unrelated ML or publishing credentials", () => {
   const config = loadSheetsConfig({

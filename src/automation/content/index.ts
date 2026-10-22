@@ -1,5 +1,7 @@
 import { z } from "zod";
-import type { Task, ContentPlan } from "../domain.js";
+import { readFile } from "node:fs/promises";
+import { contentTypes, platforms } from "../domain.js";
+import type { Task, ContentPlan, ResearchPacket } from "../domain.js";
 import type { Config } from "../operations/config.js";
 import { Http, twice } from "../operations/http.js";
 const responseSchema = z.object({
@@ -9,6 +11,30 @@ const responseSchema = z.object({
         content: z.object({
           parts: z.array(z.object({ text: z.string().optional() })),
         }),
+      }),
+    )
+    .min(1),
+});
+const groundedResponseSchema = z.object({
+  candidates: z
+    .array(
+      z.object({
+        content: z.object({
+          parts: z.array(z.object({ text: z.string().optional() })),
+        }),
+        groundingMetadata: z
+          .object({
+            groundingChunks: z
+              .array(
+                z.object({
+                  web: z
+                    .object({ uri: z.url(), title: z.string().optional() })
+                    .optional(),
+                }),
+              )
+              .optional(),
+          })
+          .optional(),
       }),
     )
     .min(1),
@@ -41,49 +67,113 @@ export class Gemini {
     const value: unknown = JSON.parse(text);
     return schema.parse(value);
   }
+  async grounded<T>(
+    model: string,
+    key: string,
+    prompt: string,
+    schema: z.ZodType<T>,
+  ): Promise<{ value: T; sources: ResearchPacket["sources"] }> {
+    const response = await this.http.json(
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+      groundedResponseSchema,
+      {
+        method: "POST",
+        headers: { "x-goog-api-key": key, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          tools: [{ google_search: {} }],
+          generationConfig: { responseMimeType: "application/json" },
+        }),
+        timeout: 180000,
+      },
+    );
+    const candidate = response.candidates[0];
+    const text =
+      candidate?.content.parts.map((part) => part.text ?? "").join("") ?? "";
+    const input: unknown = JSON.parse(text);
+    const seen = new Set<string>();
+    const sources = (candidate?.groundingMetadata?.groundingChunks ?? [])
+      .flatMap((chunk) => (chunk.web ? [chunk.web] : []))
+      .filter((source) => {
+        if (seen.has(source.uri)) return false;
+        seen.add(source.uri);
+        return true;
+      })
+      .map((source) => ({
+        url: source.uri,
+        title: source.title?.trim() || new URL(source.uri).hostname,
+      }));
+    return { value: schema.parse(input), sources };
+  }
+  async vision<T>(
+    model: string,
+    key: string,
+    prompt: string,
+    imagePath: string,
+    mimeType: "image/jpeg" | "image/png",
+    schema: z.ZodType<T>,
+  ): Promise<T> {
+    const response = await this.http.json(
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+      responseSchema,
+      {
+        method: "POST",
+        headers: { "x-goog-api-key": key, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: "user",
+              parts: [
+                { text: prompt },
+                {
+                  inline_data: {
+                    mime_type: mimeType,
+                    data: (await readFile(imagePath)).toString("base64"),
+                  },
+                },
+              ],
+            },
+          ],
+          generationConfig: { responseMimeType: "application/json" },
+        }),
+        timeout: 180000,
+      },
+    );
+    const text =
+      response.candidates[0]?.content.parts
+        .map((part) => part.text ?? "")
+        .join("") ?? "";
+    const input: unknown = JSON.parse(text);
+    return schema.parse(input);
+  }
 }
-const directionSchema = z.object({
-  example: z.string().min(10).max(600),
-  payoff: z.string().min(10).max(400),
-  objects: z
-    .array(
-      z.object({
-        id: z.string().regex(/^[a-zA-Z0-9-]+$/),
-        label: z.string().min(1).max(50),
-        role: z.string().min(1).max(180),
-        color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
-        box: z
-          .object({
-            x: z.number().int().min(0).max(820),
-            y: z.number().int().min(0).max(1230),
-            width: z.number().int().min(80).max(700),
-            height: z.number().int().min(60).max(600),
-          })
-          .refine(
-            (box) => box.x + box.width <= 900,
-            "Object exceeds scene width",
-          )
-          .refine(
-            (box) => box.y + box.height <= 1310,
-            "Object exceeds scene height",
-          ),
-      }),
-    )
-    .min(2)
-    .max(8),
-  rules: z.string().min(10).max(600),
-});
 const planSchema = z.object({
+  type: z.enum(contentTypes),
   title: z.string().min(1).max(100),
   narration: z.string().min(1),
-  caption: z.string().min(1).max(2000),
-  direction: directionSchema,
+  copies: z.object(
+    Object.fromEntries(
+      platforms.map((platform) => [
+        platform,
+        z.object({
+          title: z.string().min(1).max(100),
+          description: z.string().min(1).max(2000),
+        }),
+      ]),
+    ) as Record<
+      (typeof platforms)[number],
+      z.ZodObject<{
+        title: z.ZodString;
+        description: z.ZodString;
+      }>
+    >,
+  ),
   beats: z
     .array(
       z.object({
         id: z.string().regex(/^[a-zA-Z0-9-]+$/),
         text: z.string().min(1),
-        visual: z.string().min(1),
+        purpose: z.string().min(5).max(240),
       }),
     )
     .min(3)
@@ -122,16 +212,16 @@ export function normalize(text: string) {
     .trim();
 }
 export function gradeContent(
-  plan: Omit<ContentPlan, "grade">,
+  plan: Omit<ContentPlan, "grade" | "research">,
   task: Task,
 ): number {
   const words = plan.narration.split(/\s+/).filter(Boolean).length;
-  if (words < 90 || words > 180)
+  if (words < 90 || words > 165)
     throw new Error(
       "Narration word count cannot reasonably fit the selected sixty-second target",
     );
   let score = 100;
-  if (words < 115 || words > 165) score -= 20;
+  if (words < 105 || words > 155) score -= 20;
   if (
     /^(hey guys|welcome|today we will)/i.test(plan.narration.trim()) ||
     /follow for more|let me know/i.test(plan.narration)
@@ -150,38 +240,40 @@ export function gradeContent(
     );
   if (task.narration && plan.narration.trim() !== task.narration.trim())
     throw new Error("Supplied narration must not be rewritten");
-  if (
-    plan.direction &&
-    new Set(plan.direction.objects.map((object) => object.id)).size !==
-      plan.direction.objects.length
-  )
-    throw new Error("Visual objects must have unique persistent IDs");
+  if (task.type && plan.type !== task.type)
+    throw new Error(
+      `Content type must preserve the Sheet override ${task.type}`,
+    );
   if (score < 80)
     throw new Error(`Content quality grade ${score}/100 is below 80`);
   return score;
 }
 export function createContent(config: Config, gemini: Gemini) {
-  return (task: Task) =>
+  return (task: Task, research: ResearchPacket) =>
     twice(async (_attempt, error) => {
       const plan = await gemini.generate(
         config.GEMINI_SCRIPT_MODEL,
         config.GEMINI_API_KEY,
-        `Prepare an English technical educational reel about ${JSON.stringify(task.idea)}. Context: ${JSON.stringify(task.description)}.
-${task.narration ? `Use exactly this supplied narration without rewriting it: ${JSON.stringify(task.narration)}` : "Write a single continuous spoken narration of 115–165 words. Let the explanation end naturally; do not pad or rush it to hit an exact duration."}
-Keep simple English, explain like a friend, keep technical terms and spell acronyms out on first use. No introductions, outros, stage directions, markdown, headings, or unsupported factual meta-claims. Output JSON: {title,narration,caption,beats:[{id,text,visual}],direction:{example,payoff,objects:[{id,label,role,color,box:{x,y,width,height}}],rules}}.
-The example is one concrete scenario carried from opening to payoff. Use 2–8 persistent diagram objects with unique IDs, consistent six-digit hex colors and fixed pixel boxes inside the 900×1310 scene. Boxes must not leave the scene. Describe a visible causal action in EVERY beat: request transfer, comparison, route, state change or result. Reuse these same IDs and boxes in each beat's visual brief. The opening immediately demonstrates the problem; the middle shows the mechanism; the final beat reveals a specific outcome. Rules define shared typography and restrained transitions. Never use a decorative particle montage or moving text as the whole explanation.
-Use short varied sentences, purposeful punctuation and natural breath pauses. Prefer established expanded terms when an acronym would otherwise be unclear; preserve supplied text exactly. Use 3–8 explanation beats whose text partitions EXACTLY the narration in order. Visuals should be clear custom technical animations with dark background, cyan/magenta accents, accurate arrows, no humans. Caption is shared across all three platforms: concise explanation, hashtags, keywords. Produce coherent narration and visuals jointly. ${error ? `Previous validation failed; fix it: ${error}` : ""}`,
+        `Prepare an English technical educational reel about ${JSON.stringify(task.idea)}. Context: ${JSON.stringify(task.description)}. Audience: ${JSON.stringify(task.audience || "people learning practical software engineering")}. Research: ${JSON.stringify(research)}.
+${task.narration ? `Use exactly this supplied narration without rewriting it: ${JSON.stringify(task.narration)}` : "Write a single continuous spoken narration of 105–155 words. Let the explanation end naturally; do not pad or rush it to hit an exact duration."}
+${task.type ? `The Sheet explicitly sets type=${task.type}; preserve it.` : `Classify type as one of ${contentTypes.join(", ")}.`} Follow the matching structure: question = problem, naive understanding, failure, correct model; comparison = shared purpose, essential difference, concrete example, practical choice; interview = exact prompt, reasoning, scalable answer, tradeoff; scenario = initial state, triggering event, consequence, resolution.
+Keep simple natural Indian English and explain like a knowledgeable friend. Spell acronyms out on first use. Open with the exact confusion or problem. Carry one concrete example through the explanation. No greeting, dramatic social hook, outro, engagement bait, stage direction, markdown, heading, fake personal experience, or unsupported factual claim.
+Output JSON {type,title,narration,beats:[{id,text,purpose}],copies:{youtube:{title,description},instagram:{title,description},facebook:{title,description}}}. Use 3–8 beats whose text partitions EXACTLY the narration in order. Each purpose states the causal idea that must become visible. Write distinct platform descriptions but preserve the same factual meaning. ${error ? `Previous validation failed; fix it: ${error}` : ""}`,
         planSchema,
       );
       const structuralGrade = gradeContent(plan, task);
       const quality = await gemini.generate(
         config.GEMINI_SCRIPT_MODEL,
         config.GEMINI_API_KEY,
-        `Audit this short technical explanation without rewriting it. Topic: ${JSON.stringify(task.idea)}. Trusted context: ${JSON.stringify(task.description)}. Plan: ${JSON.stringify(plan)}.
+        `Audit this short technical explanation without rewriting it. Topic: ${JSON.stringify(task.idea)}. Trusted context and evidence: ${JSON.stringify(research)}. Plan: ${JSON.stringify(plan)}.
 Return JSON {clarity,accuracy,exampleUsefulness,authenticity,issues}. Score each dimension 0–100. Accuracy means definitions and causal claims agree with established technical meaning and the trusted context. Example usefulness means the example visibly demonstrates the mechanism rather than decorating it. Authenticity means direct, specific, conversational language without hype, generic filler, fake personal experience or engagement bait. Clarity includes a comprehensible opening, logical progression and memorable payoff. List concrete issues only. Be strict; formatting validity alone is not quality.`,
         explanationQualitySchema,
       );
       const explanationGrade = requireExplanationQuality(quality);
-      return { ...plan, grade: Math.min(structuralGrade, explanationGrade) };
+      return {
+        ...plan,
+        research,
+        grade: Math.min(structuralGrade, explanationGrade),
+      };
     });
 }

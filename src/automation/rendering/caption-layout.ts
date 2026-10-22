@@ -24,7 +24,7 @@ export function captionPhrases(words: Word[]): CaptionPhrase[] {
       previous &&
       (word.start - previous.end > 0.4 ||
         characters > 34 ||
-        current.length >= 6)
+        current.length >= 5)
     )
       flush();
     current.push(word);

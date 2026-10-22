@@ -36,7 +36,6 @@ jobs:
       FACEBOOK_ACCESS_TOKEN: ${{ secrets.FACEBOOK_ACCESS_TOKEN }}
       VOICEBOX_REFERENCE_TEXT: ${{ secrets.VOICEBOX_REFERENCE_TEXT }}
       VOICEBOX_MODEL_SIZE: "1.7B"
-      COVER_INTRO_DURATION_SEC: "0.5"
       PYTHON_EXECUTABLE: python
     steps:
       - name: Record total job budget start

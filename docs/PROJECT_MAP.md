@@ -1,4 +1,6 @@
-# Current project map
+# Historical project map
+
+> This describes the pre-redesign pipeline and is retained only for migration context. The active system is documented in [IMPLEMENTATION.md](IMPLEMENTATION.md) and [MAIN_VISUAL_PIPELINE_PLAN.md](MAIN_VISUAL_PIPELINE_PLAN.md).
 
 ## Product and active execution path
 

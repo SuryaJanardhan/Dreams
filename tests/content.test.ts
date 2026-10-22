@@ -12,12 +12,20 @@ test("supplied narration preserves punctuation and wording exactly, not only nor
     idea: "API",
     description: "",
     narration: text,
+    type: "question" as const,
+    audience: "",
+    sourceUrls: [],
   };
   const plan = {
+    type: "question" as const,
     title: "API",
     narration: text,
-    caption: "API",
-    beats: [{ id: "one", text, visual: "flow" }],
+    copies: {
+      youtube: { title: "API", description: "API" },
+      instagram: { title: "API", description: "API" },
+      facebook: { title: "API", description: "API" },
+    },
+    beats: [{ id: "one", text, purpose: "Show the request flow" }],
   };
   assert.equal(gradeContent(plan, task), 100);
   assert.throws(
@@ -37,16 +45,30 @@ test("prohibited generic introductions are rejected instead of barely passing", 
     () =>
       gradeContent(
         {
+          type: "question",
           title: "API",
           narration,
-          caption: "API",
+          copies: {
+            youtube: { title: "API", description: "API" },
+            instagram: { title: "API", description: "API" },
+            facebook: { title: "API", description: "API" },
+          },
           beats: thirds.map((part, index) => ({
             id: `beat-${index}`,
             text: part.join(" "),
-            visual: "Demonstrate a concrete technical action",
+            purpose: "Demonstrate a concrete technical action",
           })),
         },
-        { id: "fixture", row: 2, idea: "API", description: "", narration: "" },
+        {
+          id: "fixture",
+          row: 2,
+          idea: "API",
+          description: "",
+          narration: "",
+          type: "",
+          audience: "",
+          sourceUrls: [],
+        },
       ),
     /generic introduction/i,
   );

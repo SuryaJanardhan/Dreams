@@ -61,12 +61,12 @@ Every creative stage returns typed data and evidence. No stage passes free-form 
 
 The planner first classifies the Sheet row into one of four structures:
 
-| Type | Beat structure |
-| --- | --- |
-| Question | Problem → naive understanding → failure → correct model |
+| Type       | Beat structure                                                              |
+| ---------- | --------------------------------------------------------------------------- |
+| Question   | Problem → naive understanding → failure → correct model                     |
 | Comparison | Shared purpose → essential difference → concrete example → practical choice |
-| Interview | Exact prompt → reasoning → scalable answer → tradeoff |
-| Scenario | Initial state → triggering event → consequence → resolution |
+| Interview  | Exact prompt → reasoning → scalable answer → tradeoff                       |
+| Scenario   | Initial state → triggering event → consequence → resolution                 |
 
 The opening sentence states the exact confusion. The script uses natural Indian English, one continuous example, short varied sentences, and concrete technical terms. It ends when the distinction or result is clear. Generic introductions, dramatic hooks, calls for likes, stage directions, and padded conclusions fail validation.
 
@@ -155,22 +155,22 @@ The repair controller modifies only the smallest failed unit. It allows the init
 
 Keep `src/automation/workflow`, publishing, workspace cleanup, pause control, and provider verification as the stable operational shell. Change the creative modules behind their interfaces.
 
-| Module | Responsibility |
-| --- | --- |
-| `intake` | Parse required `Topic` and optional `Type`, `Context`, `Audience`, `Source URLs`; infer omitted fields. |
-| `research` | Resolve source URLs, collect official evidence when needed, and return source links plus research mode. |
-| `content` | Classify format and produce the factual story, narration, claims, beats, and platform copy. |
-| `visual-planning` | Convert beats into typed objects, states, layouts, transitions, asset intents, and sound intents. |
-| `primitives` | Own trusted primitives, validate proposed declarative extensions, and handle promotion records. |
-| `assets` | Search, download, validate, crop, attribute, and cache only within the current job. |
-| `voice` | Produce and validate the approved narration voice. |
-| `captions` | Transcribe, align, phrase, and place captions from actual audio timing. |
-| `timeline` | Resolve word anchors into beat, motion, caption, and sound timing. |
-| `renderer` | Render the white diagram system through trusted TypeScript components. |
-| `audio-mix` | Mix narration, owned background music, and rate-limited semantic cues. |
-| `quality` | Run deterministic media/visual checks and the multimodal critic. |
-| `publishing` | Publish the shared master with per-platform metadata and verify IDs/links. |
-| `operations` | Persist progress, pause on failure, clean temporary data, and email outcomes/review links. |
+| Module            | Responsibility                                                                                          |
+| ----------------- | ------------------------------------------------------------------------------------------------------- |
+| `intake`          | Parse required `Topic` and optional `Type`, `Context`, `Audience`, `Source URLs`; infer omitted fields. |
+| `research`        | Resolve source URLs, collect official evidence when needed, and return source links plus research mode. |
+| `content`         | Classify format and produce the factual story, narration, claims, beats, and platform copy.             |
+| `visual-planning` | Convert beats into typed objects, states, layouts, transitions, asset intents, and sound intents.       |
+| `primitives`      | Own trusted primitives, validate proposed declarative extensions, and handle promotion records.         |
+| `assets`          | Search, download, validate, crop, attribute, and cache only within the current job.                     |
+| `voice`           | Produce and validate the approved narration voice.                                                      |
+| `captions`        | Transcribe, align, phrase, and place captions from actual audio timing.                                 |
+| `timeline`        | Resolve word anchors into beat, motion, caption, and sound timing.                                      |
+| `renderer`        | Render the white diagram system through trusted TypeScript components.                                  |
+| `audio-mix`       | Mix narration, owned background music, and rate-limited semantic cues.                                  |
+| `quality`         | Run deterministic media/visual checks and the multimodal critic.                                        |
+| `publishing`      | Publish the shared master with per-platform metadata and verify IDs/links.                              |
+| `operations`      | Persist progress, pause on failure, clean temporary data, and email outcomes/review links.              |
 
 Public module entry points should accept and return domain types. Provider SDKs, prompts, browser rendering, FFmpeg commands, and storage details remain private implementation details.
 

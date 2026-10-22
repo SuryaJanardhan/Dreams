@@ -112,15 +112,25 @@ async function fixture(http: ProviderFixture) {
       grade: 100,
     },
     plan: {
+      type: "question" as const,
       title: "API",
       narration: "script",
-      caption: "ONE SHARED CAPTION",
       beats: [],
+      copies: {
+        youtube: { title: "API", description: "YOUTUBE COPY" },
+        instagram: { title: "API", description: "INSTAGRAM COPY" },
+        facebook: { title: "API", description: "FACEBOOK COPY" },
+      },
+      research: {
+        mode: "gemini-best-effort" as const,
+        summary: "Fixture",
+        sources: [],
+      },
       grade: 100,
     },
   };
 }
-test("publishing uses one shared caption and provider permalinks, never a numeric Instagram ID as a link", async () => {
+test("publishing uses platform copy and provider permalinks, never a numeric Instagram ID as a link", async () => {
   const http = new ProviderFixture();
   const { workspace, publisher, video, plan } = await fixture(http);
   const results: Publication[] = [];
@@ -144,10 +154,8 @@ test("publishing uses one shared caption and provider permalinks, never a numeri
         (call) => call.request.body && typeof call.request.body === "string",
       )
       .map((call) => String(call.request.body));
-    assert.equal(
-      bodies.filter((body) => body.includes("ONE SHARED CAPTION")).length,
-      3,
-    );
+    for (const copy of ["YOUTUBE COPY", "INSTAGRAM COPY", "FACEBOOK COPY"])
+      assert.ok(bodies.some((body) => body.includes(copy)));
     await publisher.cleanup();
     assert.equal(
       http.calls.filter((call) => call.request.method === "DELETE").length,

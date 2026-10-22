@@ -44,7 +44,6 @@ const environment = z.object({
     .min(20)
     .max(340)
     .default(120),
-  COVER_INTRO_DURATION_SEC: z.coerce.number().min(0).max(2).default(0.5),
 });
 export type Config = z.infer<typeof environment> & {
   credentials: z.infer<typeof serviceAccount>;
@@ -96,14 +95,18 @@ export function loadConfig(
     secrets: [...keys.map((key) => parsed.data[key]), credentials.private_key],
   };
 }
-export function redact(text: string, secrets: readonly string[]): string {
+export function redact(
+  text: string,
+  secrets: readonly string[],
+  limit = 4000,
+): string {
   return secrets
     .reduce(
       (result, secret) =>
         secret ? result.split(secret).join("[redacted]") : result,
       text,
     )
-    .slice(0, 4000);
+    .slice(0, limit);
 }
 
 /** Control-plane validation does not require voice/render/publishing credentials. */

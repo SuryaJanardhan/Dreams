@@ -7,9 +7,17 @@ import { createNotifier } from "./operations/email.js";
 import { createWorkspace, assertAsset } from "./workspace/index.js";
 import { Sheets } from "./sheets/index.js";
 import { Gemini, createContent } from "./content/index.js";
+import { createResearch } from "./research/index.js";
+import {
+  createVisualPlan,
+  parsePrimitiveSpec,
+  repairVisualPlan,
+} from "./visual-planning/index.js";
+import { createAssets } from "./assets/index.js";
 import { createVoice } from "./voice/index.js";
 import { createCaptions } from "./captions/index.js";
-import { renderVideo, sceneGenerator } from "./rendering/index.js";
+import { renderVideo } from "./rendering/index.js";
+import { createVisualQuality } from "./quality/index.js";
 import { Publisher } from "./publishing/index.js";
 import { runWorkflow } from "./workflow/index.js";
 import { message } from "./domain.js";
@@ -66,7 +74,7 @@ export async function main() {
     };
     const result = await runWorkflow({
       async preflight() {
-        for (const asset of ["Base-audio.mp3", "cover.png", "Bgm.m4a"])
+        for (const asset of ["Base-audio.mp3", "Bgm.m4a"])
           await assertAsset(resolve(config.root, "assets", asset));
         const reference = await probe(
           resolve(config.root, "assets/Base-audio.mp3"),
@@ -91,16 +99,60 @@ export async function main() {
         return sheets.pause(redact(reason, secrets));
       },
       workspace: (id) => createWorkspace(config.root, id),
+      research: createResearch(config, gemini),
       content: createContent(config, gemini),
+      promotedPrimitives: () => sheets.promotedPrimitives(parsePrimitiveSpec),
+      visualPlan: createVisualPlan(config, gemini),
+      recordPrimitiveReviews: (jobId, specs) =>
+        sheets.recordPrimitiveReviews(jobId, specs),
+      assets: createAssets(config, http, gemini),
       voice: createVoice(config, signal),
       captions: createCaptions(config, http),
-      render: (plan, narration, captions, workspace) =>
-        renderVideo(plan, narration, captions, workspace, {
+      render: (plan, visualPlan, assets, narration, captions, workspace) =>
+        renderVideo(plan, visualPlan, narration, captions, workspace, {
           config,
           signal: signal(),
-          generator: sceneGenerator(config, gemini),
+          assets,
           log: (text) => console.log(redact(text, secrets)),
         }),
+      quality: async (
+        plan,
+        visualPlan,
+        assets,
+        narration,
+        captions,
+        video,
+        workspace,
+      ) => {
+        const review = createVisualQuality(config, gemini, signal);
+        try {
+          await review(plan, visualPlan, video, workspace);
+          return video;
+        } catch (error) {
+          const repaired = await repairVisualPlan(
+            config,
+            gemini,
+            plan,
+            visualPlan,
+            error instanceof Error ? error.message : String(error),
+          );
+          const rerendered = await renderVideo(
+            plan,
+            repaired,
+            narration,
+            captions,
+            workspace,
+            {
+              config,
+              signal: signal(),
+              assets,
+              log: (text) => console.log(redact(text, secrets)),
+            },
+          );
+          await review(plan, repaired, rerendered, workspace);
+          return rerendered;
+        }
+      },
       publish: (video, plan, workspace, record, journal) =>
         publisher.publish(video, plan, workspace, record, journal),
       cleanupStaging: () => {

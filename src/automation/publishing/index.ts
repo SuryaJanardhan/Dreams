@@ -182,8 +182,8 @@ export class Publisher {
           headers: auth,
           body: JSON.stringify({
             snippet: {
-              title: plan.title,
-              description: plan.caption,
+              title: plan.copies.youtube.title,
+              description: plan.copies.youtube.description,
               categoryId: "27",
             },
             status: { privacyStatus: "public", selfDeclaredMadeForKids: false },
@@ -291,7 +291,7 @@ export class Publisher {
           body: JSON.stringify({
             media_type: "REELS",
             video_url: url,
-            caption: plan.caption,
+            caption: plan.copies.instagram.description,
             thumb_offset: 250,
           }),
         },
@@ -423,7 +423,10 @@ export class Publisher {
         {
           method: "POST",
           headers: auth,
-          body: JSON.stringify({ file_url: url, description: plan.caption }),
+          body: JSON.stringify({
+            file_url: url,
+            description: plan.copies.facebook.description,
+          }),
         },
       );
       id = result.id;

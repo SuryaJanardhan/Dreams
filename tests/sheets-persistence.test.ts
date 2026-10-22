@@ -41,8 +41,9 @@ class SheetFixture extends Http {
             }
           : {
               sheets: [
-                { properties: { title: "Sheet1" } },
-                { properties: { title: "AutomationControl" } },
+                { properties: { title: "Sheet1", sheetId: 0 } },
+                { properties: { title: "AutomationControl", sheetId: 1 } },
+                { properties: { title: "PrimitiveReview", sheetId: 2 } },
               ],
             };
     return schema.parse(value);

@@ -18,6 +18,9 @@ function fixture() {
         idea: "API",
         description: "",
         narration: "",
+        type: "",
+        audience: "",
+        sourceUrls: [],
       },
     }),
     save: async (p) => {
@@ -35,13 +38,34 @@ function fixture() {
         return ["Local media removed"];
       },
     }),
-    content: async () => ({
+    research: async () => ({
+      mode: "gemini-best-effort",
+      summary: "Fixture research",
+      sources: [],
+    }),
+    content: async (_task, research) => ({
+      type: "question",
       title: "API",
       narration: "example",
-      caption: "same copy",
       beats: [],
+      copies: {
+        youtube: { title: "API", description: "YouTube" },
+        instagram: { title: "API", description: "Instagram" },
+        facebook: { title: "API", description: "Facebook" },
+      },
+      research,
       grade: 95,
     }),
+    promotedPrimitives: async () => [],
+    visualPlan: async () => ({
+      version: 1,
+      objects: [],
+      beats: [],
+      assetIntents: [],
+      proposedPrimitives: [],
+    }),
+    recordPrimitiveReviews: async () => "https://example.org/review",
+    assets: async () => [],
     voice: async () => ({ path: "voice.wav", duration: 60, sampleRate: 24000 }),
     captions: async () => ({ words: [], beats: [], duration: 60 }),
     render: async () => ({
@@ -52,6 +76,7 @@ function fixture() {
       fps: 60,
       grade: 90,
     }),
+    quality: async (_plan, _visual, _assets, _voice, _captions, video) => video,
     publish: async (_video, _plan, _ws, record) => {
       for (const platform of ["youtube", "instagram", "facebook"] as const) {
         events.push(platform);

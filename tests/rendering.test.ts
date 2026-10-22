@@ -1,42 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
-import { resolve } from "node:path";
 import { createWorkspace } from "../src/automation/workspace/index.js";
-import { validateScene } from "../src/automation/rendering/code.js";
-test("custom animation code must satisfy the typed contract and cannot load external capabilities", async () => {
-  const parent = await mkdtemp(resolve(process.cwd(), ".scene-test-"));
-  const workspace = await createWorkspace(parent, "typed-scene");
-  try {
-    await assert.rejects(
-      validateScene(
-        'export function createScene() { fetch("https://example.org"); }',
-        "bad.ts",
-        workspace,
-        process.cwd(),
-      ),
-      /capability/,
-    );
-    await assert.rejects(
-      validateScene(
-        'export function createScene() { let x: number = "wrong"; return x; }',
-        "bad-type.ts",
-        workspace,
-        process.cwd(),
-      ),
-      /not assignable/,
-    );
-    const valid = `import type { SceneContext, Scene } from './scene-contract'; export function createScene(ctx: SceneContext): Scene { const node=document.createElement('div');node.textContent='API';node.style.fontSize='60px';ctx.root.append(node);ctx.timeline.to(node,{x:80,duration:ctx.duration},0);return {dispose(){ctx.root.replaceChildren();}}; }`;
-    assert.match(
-      await validateScene(valid, "valid.ts", workspace, process.cwd()),
-      /GeneratedScene/,
-    );
-  } finally {
-    await workspace.cleanup();
-    await rm(parent, { recursive: true });
-  }
-});
-
 import {
   objectGeometryErrors,
   renderVideo,
@@ -47,15 +11,12 @@ test("persistent visual objects reject geometry drift between scenes", () => {
   const expected = [
     {
       id: "request",
-      label: "Request",
-      role: "moving request",
-      color: "#22d3ee",
       box: { x: 100, y: 200, width: 180, height: 120 },
     },
   ];
   assert.deepEqual(
     objectGeometryErrors(expected, [
-      { id: "request", x: 105, y: 195, width: 178, height: 125 },
+      { id: "request", x: 101, y: 199, width: 178, height: 121 },
     ]),
     [],
   );
@@ -90,13 +51,30 @@ for (const topic of ["API", "Load Balancer", "Cache"])
         signal,
       );
       const plan: ContentPlan = {
+        type: "question",
         title: topic,
         narration: topic,
-        caption: topic,
-        beats: [{ id: "explain", text: topic, visual: "diagram" }],
+        beats: [
+          { id: "explain", text: topic, purpose: "Show the technical idea" },
+        ],
+        copies: {
+          youtube: { title: topic, description: topic },
+          instagram: { title: topic, description: topic },
+          facebook: { title: topic, description: topic },
+        },
+        research: {
+          mode: "gemini-best-effort",
+          summary: "Fixture",
+          sources: [],
+        },
         grade: 100,
       };
-      const words = [{ text: topic, start: 0, end: 0.75 }];
+      const parts = topic.split(" ");
+      const words = parts.map((text, index) => ({
+        text,
+        start: (index * 0.75) / parts.length,
+        end: ((index + 1) * 0.75) / parts.length,
+      }));
       const track: CaptionTrack = {
         words,
         duration: 0.75,
@@ -104,23 +82,45 @@ for (const topic of ["API", "Load Balancer", "Cache"])
       };
       const result = await renderVideo(
         plan,
+        {
+          version: 1,
+          objects: [
+            {
+              id: "concept",
+              kind: "api",
+              label: topic,
+              semantic: "active",
+              box: { x: 200, y: 300, width: 500, height: 240 },
+            },
+          ],
+          beats: [
+            {
+              beatId: "explain",
+              objectIds: ["concept"],
+              transitions: [
+                {
+                  operation: "create",
+                  objectIds: ["concept"],
+                  anchor: parts[0]!,
+                },
+              ],
+            },
+          ],
+          assetIntents: [],
+          proposedPrimitives: [],
+        },
         { path: audio, duration: 0.75, sampleRate: 24000 },
         track,
         workspace,
         {
-          config: { root: process.cwd(), COVER_INTRO_DURATION_SEC: 0.1 },
+          config: { root: process.cwd() },
           signal,
-          generator: {
-            async generate() {
-              return `import type { SceneContext, Scene } from './scene-contract'; export function createScene(ctx: SceneContext): Scene { const node=document.createElement('div');node.textContent=${JSON.stringify(topic)};node.style.cssText='position:absolute;left:120px;top:240px;font-size:64px;color:#22d3ee';ctx.root.append(node);ctx.timeline.to(node,{x:50,duration:ctx.duration},0);return {dispose(){ctx.root.replaceChildren();}}; }`;
-            },
-          },
         },
       );
       assert.equal(result.fps, 60);
       assert.equal(result.width, 1080);
       assert.equal(result.height, 1920);
-      assert.ok(Math.abs(result.duration - 0.85) < 0.1);
+      assert.ok(Math.abs(result.duration - 0.75) < 0.1);
     } finally {
       await workspace.cleanup();
     }

@@ -1,197 +1,95 @@
-import { chromium, type Browser, type Frame, type Page } from "playwright";
-import { buildSync } from "esbuild";
-import { createRequire } from "node:module";
+import { chromium, type Page } from "playwright";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import sharp from "sharp";
-import { z } from "zod";
 import type {
   CaptionTrack,
   ContentPlan,
   Narration,
   RenderedVideo,
-  TimedBeat,
+  ValidatedAsset,
+  VisualObject,
+  VisualPlan,
+  VisualTransition,
   Workspace,
-  VisualDirection,
 } from "../domain.js";
 import type { Config } from "../operations/config.js";
-import { Gemini } from "../content/index.js";
-import { probe, measureMix } from "../operations/media.js";
-import { captionPhrases, captionAt } from "./caption-layout.js";
-import { validateScene } from "./code.js";
-import type { SceneContext, Scene } from "./scene-contract.js";
-import type { gsap } from "gsap";
-const requireLocal = createRequire(resolve(process.cwd(), "package.json"));
-const sourceSchema = z.object({ source: z.string().min(1) });
-export interface SceneGenerator {
-  generate(
-    beat: TimedBeat,
-    words: CaptionTrack["words"],
-    feedback: string,
-    direction?: VisualDirection,
-  ): Promise<string>;
+import { command, measureMix, probe } from "../operations/media.js";
+import { captionAt, captionPhrases } from "./caption-layout.js";
+
+const palette = {
+  structure: "#151515",
+  active: "#2878d0",
+  success: "#3f8f62",
+  warning: "#e7c536",
+  failure: "#cf4e46",
+} as const;
+const css = `
+@font-face{font-family:Diagram;src:url(data:font/ttf;base64,__FONT__)}
+*{box-sizing:border-box}html,body{margin:0;width:1080px;height:1920px;overflow:hidden;background:#fff;color:#151515;font-family:Diagram,Arial,sans-serif}
+#yellow{position:absolute;left:0;top:80px;width:250px;height:18px;background:#e7c536}#black{position:absolute;left:250px;top:80px;width:76px;height:18px;background:#151515}
+#scene{position:absolute;left:90px;top:150px;width:900px;height:1250px;overflow:hidden}#connectors{position:absolute;inset:0;width:900px;height:1250px}.connector{stroke:#151515;stroke-width:7;stroke-linecap:round}.packet{fill:#2878d0}
+.object{position:absolute;border:5px solid #151515;border-radius:20px;background:#fff;display:flex;align-items:center;justify-content:center;text-align:center;padding:18px;font-size:38px;line-height:1.12;font-weight:700;opacity:0;overflow:hidden;transform-origin:center}
+.object[data-semantic=active]{border-color:#2878d0}.object[data-semantic=success]{border-color:#3f8f62}.object[data-semantic=warning]{border-color:#e7c536}.object[data-semantic=failure]{border-color:#cf4e46}.focused{box-shadow:0 0 0 10px rgba(40,120,208,.16)}.dimmed{opacity:.28!important}.removed{opacity:0!important}
+.kind-label{border:0;background:transparent;justify-content:flex-start;text-align:left;padding:0;font-size:52px}.kind-code-card{align-items:stretch;justify-content:flex-start;flex-direction:column;text-align:left;padding:0;font-family:monospace;font-size:30px}.code-title{padding:14px 18px;background:#151515;color:#fff}.code-body{padding:18px;white-space:pre-wrap}
+.kind-table{padding:0;display:block}.table-title{padding:10px;background:#151515;color:#fff}.table-row{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;border-top:3px solid #151515;font-size:27px}.table-cell{padding:10px;border-right:2px solid #151515}.table-cell:last-child{border:0}.kind-database{border-radius:50% / 12%;padding-top:25px}.kind-file:before{content:"";position:absolute;right:0;top:0;border-left:36px solid transparent;border-bottom:36px solid #e7c536}
+.kind-queue{gap:8px}.queue-dot{width:24px;height:24px;border:4px solid #151515;border-radius:50%}.kind-browser{padding-top:45px}.kind-browser:before{content:"●  ●  ●";position:absolute;left:0;right:0;top:0;height:36px;padding-left:12px;text-align:left;background:#f0f0ed;border-bottom:4px solid #151515;font-size:20px}.kind-lock:before{content:"⌑";font-size:54px;margin-right:12px}.kind-badge{border-radius:999px}.kind-image{padding:0}.kind-image img{width:100%;height:100%;object-fit:contain}.kind-composite svg{width:100%;height:100%}.detail{display:block;font-size:25px;font-weight:500;margin-top:8px}
+#captions{position:absolute;left:110px;top:1500px;width:860px;min-height:170px;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:12px;padding:14px 22px;font-size:54px;line-height:1.22;font-weight:700;text-align:center;color:#151515}#captions span.active{color:#2878d0}
+`;
+
+interface ResolvedTransition extends VisualTransition {
+  at: number;
+  end: number;
 }
-declare global {
-  interface Window {
-    TrustedGsap: { gsap: typeof gsap };
-    GeneratedScene: { createScene(context: SceneContext): Scene };
-    sceneTimeline: gsap.core.Timeline;
+function tokens(text: string) {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+}
+export function resolveTransitions(
+  plan: VisualPlan,
+  track: CaptionTrack,
+): ResolvedTransition[] {
+  const resolved: ResolvedTransition[] = [];
+  for (const visualBeat of plan.beats) {
+    const beat = track.beats.find((item) => item.id === visualBeat.beatId);
+    if (!beat) throw new Error(`Missing timed beat ${visualBeat.beatId}`);
+    const words = track.words.filter(
+      (word) => word.start >= beat.start && word.start < beat.end,
+    );
+    const normalized = words.map((word) => tokens(word.text)[0] ?? "");
+    for (const transition of visualBeat.transitions) {
+      const anchor = tokens(transition.anchor);
+      let found = -1;
+      for (let start = 0; start <= normalized.length - anchor.length; start++)
+        if (
+          anchor.every((word, offset) => normalized[start + offset] === word)
+        ) {
+          found = start;
+          break;
+        }
+      const first = words[found];
+      const last = words[found + anchor.length - 1];
+      if (found < 0 || !first || !last)
+        throw new Error(
+          `Could not align visual anchor ${JSON.stringify(transition.anchor)} in ${beat.id}`,
+        );
+      resolved.push({
+        ...transition,
+        at: first.start,
+        end: Math.min(beat.end, Math.max(last.end, first.start + 0.55)),
+      });
+    }
   }
+  return resolved.sort((a, b) => a.at - b.at);
 }
-const css =
-  "html,body{margin:0;width:1080px;height:1920px;overflow:hidden;background:#050505;color:#fff;font-family:Arial,sans-serif}#scene{position:absolute;left:60px;top:130px;width:900px;height:1310px;border:0}#captions{position:absolute;left:90px;top:1490px;width:840px;height:190px;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:12px;font-size:48px;line-height:1.3;font-weight:bold;text-align:center}";
-function gsapScript() {
-  const bundle = buildSync({
-    entryPoints: [requireLocal.resolve("gsap")],
-    bundle: true,
-    write: false,
-    format: "iife",
-    globalName: "TrustedGsap",
-    platform: "browser",
-  });
-  const text = bundle.outputFiles?.[0]?.text;
-  if (!text) throw new Error("GSAP bundling failed");
-  return text;
-}
-async function deadline<T>(
-  operation: Promise<T>,
-  ms: number,
-  terminate: () => void,
-): Promise<T> {
-  let timer: NodeJS.Timeout | undefined;
-  try {
-    return await Promise.race([
-      operation,
-      new Promise<never>((_resolve, reject) => {
-        timer = setTimeout(() => {
-          terminate();
-          reject(new Error("Generated animation execution timed out"));
-        }, ms);
-      }),
-    ]);
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
-}
-export function sceneGenerator(config: Config, gemini: Gemini): SceneGenerator {
-  return {
-    async generate(beat, words, feedback, direction) {
-      const result = await gemini.generate(
-        config.GEMINI_VISUAL_MODEL,
-        config.GEMINI_API_KEY_FOR_VISUALS,
-        `Write a custom TypeScript animation scene for a technical educational reel. Output JSON {source: string}. Explain this beat: ${JSON.stringify(beat)}. Actual timed narration words: ${JSON.stringify(words)}. Shared direction for the WHOLE reel: ${JSON.stringify(direction ?? null)}. Reuse its object IDs, labels, colors and example, so adjacent scenes explain the same system. Show the causal event described in this beat, not just animated typography. Preserve stable positions and diagram vocabulary. Hold completed diagrams briefly rather than continuously shaking every object.
-Import type {SceneContext,Scene} from './scene-contract'; export function createScene(context:SceneContext):Scene. Context root is a 900x1310 safe-area element; timeline is an already paused GSAP timeline, duration is scene seconds, words are relative-time anchors. Build original HTML/SVG technical diagrams with dark background, cyan/magenta accents, clear connections, staged transitions, minimal keywords. No humans/presenter or captions. Text >=40px; keep every visible element inside root. The renderer owns all timing and captions.
-Create every shared-direction object in every scene, set data-object-id to its exact ID, preserve its label/color, and settle it into its declared box by the end of the beat. Use context.timeline.to/fromTo/set at explicit word/beat times; do not play timeline, add callbacks, independent timelines, clocks, timers, CSS animation, imports except the type contract, remote assets, canvas, video, external URLs, random, any, type assertions, eval, or global state. Use only context.root and provided timeline. Animate meaningful content throughout scene; avoid blank openings. SVG connectors must be precise. Return {dispose(){context.root.replaceChildren();}}. Ensure calling timeline.seek at any scene time produces the intended visual state without callbacks. ${feedback ? `Repair the prior rejected scene. Errors: ${feedback}` : ""}`,
-        sourceSchema,
-      );
-      return result.source;
-    },
-  };
-}
-async function loadScene(
-  page: Page,
-  browser: Browser,
-  code: string,
-  library: string,
-  beat: TimedBeat,
-  words: CaptionTrack["words"],
-): Promise<Frame> {
-  await page.setContent(
-    `<style>${css}</style><iframe id="scene" name="animation" sandbox="allow-scripts"></iframe><div id="captions"></div>`,
-  );
-  const html = `<style>html,body{margin:0;background:#050505;color:white;font-family:Arial,sans-serif}#root{position:relative;width:900px;height:1310px;overflow:hidden}*{animation:none!important;transition:none!important}</style><div id="root"></div><script>${library.replace(/<\/script/gi, "<\\/script")}</script><script>${code.replace(/<\/script/gi, "<\\/script")}</script>`;
-  await page.locator("#scene").evaluate((element, html) => {
-    if (!(element instanceof HTMLIFrameElement))
-      throw new Error("Missing scene frame");
-    element.srcdoc = html;
-  }, html);
-  const frame =
-    page.frames().find((candidate) => candidate.name() === "animation") ??
-    (await page.waitForEvent("frameattached", { timeout: 10000 }));
-  if (!frame) throw new Error("Animation frame missing");
-  await frame.waitForFunction(
-    () => Boolean(window.GeneratedScene?.createScene),
-    {},
-    { timeout: 10000 },
-  );
-  await deadline(
-    frame.evaluate(
-      ({ duration, words }) => {
-        const runtime = window;
-        const root = document.getElementById("root");
-        if (!root || typeof runtime.GeneratedScene?.createScene !== "function")
-          throw new Error("Scene must export createScene");
-        const timeline = runtime.TrustedGsap.gsap.timeline({ paused: true });
-        runtime.sceneTimeline = timeline;
-        const result = runtime.GeneratedScene.createScene({
-          root,
-          timeline,
-          width: 900,
-          height: 1310,
-          duration,
-          words,
-        });
-        if (!result || typeof result.dispose !== "function")
-          throw new Error("Scene must return dispose");
-      },
-      {
-        duration: beat.end - beat.start,
-        words: words
-          .filter((word) => word.start >= beat.start && word.start < beat.end)
-          .map((word) => ({
-            ...word,
-            start: word.start - beat.start,
-            end: word.end - beat.start,
-          })),
-      },
-    ),
-    10000,
-    () => {
-      void browser.close();
-    },
-  );
-  return frame;
-}
-async function setTime(
-  frame: Frame,
-  page: Page,
-  browser: Browser,
-  time: number,
-  words: CaptionTrack["words"],
-  captionTime: number,
-) {
-  await deadline(
-    frame.evaluate((time) => {
-      const runtime = window;
-      runtime.sceneTimeline.seek(time, true);
-    }, time),
-    5000,
-    () => {
-      void browser.close();
-    },
-  );
-  await page.locator("#captions").evaluate(
-    (element, words) => {
-      const signature = JSON.stringify(words);
-      if (element.getAttribute("data-caption") === signature) return;
-      element.setAttribute("data-caption", signature);
-      element.replaceChildren(
-        ...words.map((word) => {
-          const span = document.createElement("span");
-          span.textContent = word.text;
-          span.style.color = word.active ? "#22d3ee" : "white";
-          return span;
-        }),
-      );
-    },
-    words.map((word) => ({
-      text: word.text,
-      active: word.start <= captionTime && word.end > captionTime,
-    })),
-  );
-}
+
 interface PositionedObject {
   id: string;
   x: number;
@@ -199,248 +97,413 @@ interface PositionedObject {
   width: number;
   height: number;
 }
-
 export function objectGeometryErrors(
-  expected: VisualDirection["objects"],
+  expected: Pick<VisualObject, "id" | "box">[],
   actual: PositionedObject[],
 ) {
   const errors: string[] = [];
   for (const object of expected) {
     const found = actual.find((candidate) => candidate.id === object.id);
     if (!found) {
-      errors.push(`Persistent object missing: ${object.id}`);
+      errors.push(`Visual object missing: ${object.id}`);
       continue;
     }
     if (
-      Math.abs(found.x - object.box.x) > 70 ||
-      Math.abs(found.y - object.box.y) > 70
+      Math.abs(found.x - object.box.x) > 3 ||
+      Math.abs(found.y - object.box.y) > 3
     )
-      errors.push(`Persistent object position drifted: ${object.id}`);
-    const widthRatio = found.width / object.box.width;
-    const heightRatio = found.height / object.box.height;
+      errors.push(`Visual object position drifted: ${object.id}`);
     if (
-      widthRatio < 0.6 ||
-      widthRatio > 1.4 ||
-      heightRatio < 0.6 ||
-      heightRatio > 1.4
+      Math.abs(found.width - object.box.width) > 3 ||
+      Math.abs(found.height - object.box.height) > 3
     )
-      errors.push(`Persistent object size drifted: ${object.id}`);
+      errors.push(`Visual object size drifted: ${object.id}`);
   }
   return errors;
 }
 
-async function inspectFrame(
-  frame: Frame,
+async function setupPage(
   page: Page,
-  direction?: VisualDirection,
-): Promise<Buffer> {
-  const errors = await frame.evaluate(() => {
-    const root = document.getElementById("root");
-    if (!root) return ["Missing root"];
-    const area = root.getBoundingClientRect();
+  config: Pick<Config, "root">,
+  plan: VisualPlan,
+  assets: ValidatedAsset[],
+) {
+  const font = await readFile(
+    resolve(config.root, "fonts/BalsamiqSans-Bold.ttf"),
+  );
+  await page.setContent(
+    `<style>${css.replace("__FONT__", font.toString("base64"))}</style><div id="yellow"></div><div id="black"></div><div id="scene"><svg id="connectors"></svg><div id="objects"></div></div><div id="captions"></div>`,
+  );
+  const images = Object.fromEntries(
+    await Promise.all(
+      assets.map(async (asset) => [
+        asset.id,
+        `data:${asset.path.endsWith(".png") ? "image/png" : "image/jpeg"};base64,${(await readFile(asset.path)).toString("base64")}`,
+      ]),
+    ),
+  );
+  await page.evaluate(
+    ({ plan, palette, images }) => {
+      const root = document.getElementById("objects");
+      if (!root) throw new Error("Missing object root");
+      for (const object of plan.objects) {
+        const element = document.createElement("div");
+        element.className = `object kind-${object.kind}`;
+        element.dataset.objectId = object.id;
+        element.dataset.semantic = object.semantic;
+        Object.assign(element.style, {
+          left: `${object.box.x}px`,
+          top: `${object.box.y}px`,
+          width: `${object.box.width}px`,
+          height: `${object.box.height}px`,
+        });
+        if (object.kind === "code-card") {
+          const title = document.createElement("div");
+          title.className = "code-title";
+          title.textContent = object.label;
+          const body = document.createElement("div");
+          body.className = "code-body";
+          body.textContent = object.detail ?? "";
+          element.append(title, body);
+        } else if (object.kind === "table") {
+          const title = document.createElement("div");
+          title.className = "table-title";
+          title.textContent = object.label;
+          element.append(title);
+          for (const cells of object.rows ?? []) {
+            const row = document.createElement("div");
+            row.className = "table-row";
+            for (const value of cells) {
+              const cell = document.createElement("div");
+              cell.className = "table-cell";
+              cell.textContent = value;
+              row.append(cell);
+            }
+            element.append(row);
+          }
+        } else if (object.kind === "queue") {
+          for (let index = 0; index < 4; index++) {
+            const dot = document.createElement("span");
+            dot.className = "queue-dot";
+            element.append(dot);
+          }
+        } else if (object.kind === "image") {
+          const source = object.assetId ? images[object.assetId] : undefined;
+          if (!source)
+            throw new Error(`Validated image missing for ${object.id}`);
+          const image = document.createElement("img");
+          image.src = source;
+          image.alt = object.label;
+          element.append(image);
+        } else if (object.kind === "composite") {
+          const spec = plan.proposedPrimitives.find(
+            (item) => item.id === object.primitiveId,
+          );
+          if (!spec) throw new Error(`Primitive missing for ${object.id}`);
+          const svg = document.createElementNS(
+            "http://www.w3.org/2000/svg",
+            "svg",
+          );
+          svg.setAttribute("viewBox", "0 0 100 100");
+          for (const shape of spec.shapes) {
+            const tag = shape.kind === "text" ? "text" : shape.kind;
+            const node = document.createElementNS(
+              "http://www.w3.org/2000/svg",
+              tag,
+            );
+            node.setAttribute("x", String(shape.x));
+            node.setAttribute("y", String(shape.y));
+            node.setAttribute("stroke", palette[shape.semantic]);
+            node.setAttribute(
+              "fill",
+              shape.kind === "text" ? palette[shape.semantic] : "none",
+            );
+            node.setAttribute("stroke-width", "3");
+            if (shape.width !== undefined)
+              node.setAttribute("width", String(shape.width));
+            if (shape.height !== undefined)
+              node.setAttribute("height", String(shape.height));
+            if (shape.kind === "circle")
+              node.setAttribute("r", String((shape.width ?? 10) / 2));
+            if (shape.kind === "line") {
+              node.setAttribute("x2", String(shape.x + (shape.width ?? 10)));
+              node.setAttribute("y2", String(shape.y + (shape.height ?? 0)));
+            }
+            if (shape.kind === "path") node.setAttribute("d", shape.text ?? "");
+            if (shape.kind === "text") {
+              node.textContent = shape.text ?? "";
+              node.setAttribute("font-size", "10");
+            }
+            svg.append(node);
+          }
+          element.append(svg);
+        } else {
+          const label = document.createElement("span");
+          label.textContent = object.label;
+          element.append(label);
+          if (object.detail) {
+            const detail = document.createElement("span");
+            detail.className = "detail";
+            detail.textContent = object.detail;
+            element.append(detail);
+          }
+        }
+        root.append(element);
+      }
+    },
+    { plan, palette, images },
+  );
+}
+
+async function setFrame(
+  page: Page,
+  plan: VisualPlan,
+  transitions: ResolvedTransition[],
+  time: number,
+  words: CaptionTrack["words"],
+) {
+  await page.evaluate(
+    ({ plan, transitions, time, words }) => {
+      const nodes = new Map(
+        [...document.querySelectorAll<HTMLElement>("[data-object-id]")].map(
+          (node) => [node.dataset.objectId ?? "", node],
+        ),
+      );
+      for (const node of nodes.values()) {
+        node.style.opacity = "0";
+        node.style.transform = "scale(.94)";
+        node.classList.remove("focused", "dimmed", "removed");
+      }
+      const svg = document.getElementById("connectors");
+      svg?.replaceChildren();
+      const visible = new Set<string>();
+      for (const transition of transitions) {
+        if (time < transition.at) continue;
+        const progress = Math.max(
+          0,
+          Math.min(
+            1,
+            (time - transition.at) / (transition.end - transition.at),
+          ),
+        );
+        if (transition.operation === "remove")
+          transition.objectIds.forEach((id) => visible.delete(id));
+        else if (transition.operation !== "dim")
+          transition.objectIds.forEach((id) => visible.add(id));
+        for (const id of transition.objectIds) {
+          const node = nodes.get(id);
+          if (!node) continue;
+          if (["focus", "compare"].includes(transition.operation))
+            node.classList.add("focused");
+          if (transition.operation === "dim") node.classList.add("dimmed");
+          if (transition.operation === "remove" && progress >= 1)
+            node.classList.add("removed");
+          if (transition.operation === "mutate" && transition.value) {
+            const detail = node.querySelector<HTMLElement>(".detail");
+            if (detail) detail.textContent = transition.value;
+          }
+        }
+        if (
+          ["draw", "transfer"].includes(transition.operation) &&
+          transition.objectIds.length >= 2 &&
+          svg
+        ) {
+          const from = plan.objects.find(
+            (item) => item.id === transition.objectIds[0],
+          );
+          const to = plan.objects.find(
+            (item) => item.id === transition.objectIds[1],
+          );
+          if (from && to) {
+            const x1 = from.box.x + from.box.width / 2;
+            const y1 = from.box.y + from.box.height / 2;
+            const x2 = to.box.x + to.box.width / 2;
+            const y2 = to.box.y + to.box.height / 2;
+            const line = document.createElementNS(
+              "http://www.w3.org/2000/svg",
+              "line",
+            );
+            line.setAttribute("class", "connector");
+            line.setAttribute("x1", String(x1));
+            line.setAttribute("y1", String(y1));
+            line.setAttribute("x2", String(x1 + (x2 - x1) * progress));
+            line.setAttribute("y2", String(y1 + (y2 - y1) * progress));
+            svg.append(line);
+            if (transition.operation === "transfer") {
+              const packet = document.createElementNS(
+                "http://www.w3.org/2000/svg",
+                "circle",
+              );
+              packet.setAttribute("class", "packet");
+              packet.setAttribute("r", "13");
+              packet.setAttribute("cx", String(x1 + (x2 - x1) * progress));
+              packet.setAttribute("cy", String(y1 + (y2 - y1) * progress));
+              svg.append(packet);
+            }
+          }
+        }
+      }
+      for (const id of visible) {
+        const node = nodes.get(id);
+        if (!node) continue;
+        const first = transitions.find((item) => item.objectIds.includes(id));
+        const progress = first
+          ? Math.max(0, Math.min(1, (time - first.at) / (first.end - first.at)))
+          : 1;
+        node.style.opacity = String(progress);
+        node.style.transform = `scale(${0.94 + progress * 0.06})`;
+      }
+      const captions = document.getElementById("captions");
+      if (!captions) throw new Error("Missing captions");
+      captions.replaceChildren(
+        ...words.map((word) => {
+          const span = document.createElement("span");
+          span.textContent = word.text;
+          if (word.active) span.className = "active";
+          return span;
+        }),
+      );
+    },
+    {
+      plan,
+      transitions,
+      time,
+      words: words.map((word) => ({
+        text: word.text,
+        active: word.start <= time && word.end > time,
+      })),
+    },
+  );
+}
+
+async function inspectFrame(page: Page, expected: VisualObject[]) {
+  const result = await page.evaluate(() => {
+    const scene = document.getElementById("scene");
+    if (!scene) return { errors: ["Missing scene"], actual: [] };
+    const area = scene.getBoundingClientRect();
     const errors: string[] = [];
-    for (const element of root.querySelectorAll("*")) {
+    const all = [...scene.querySelectorAll<HTMLElement>(".object")];
+    const visible = all.filter(
+      (element) => Number(getComputedStyle(element).opacity) > 0.05,
+    );
+    if (visible.length > 7)
+      errors.push("More than seven meaningful objects visible");
+    for (const element of visible) {
       const box = element.getBoundingClientRect();
-      const style = getComputedStyle(element);
-      if (
-        style.display === "none" ||
-        style.visibility === "hidden" ||
-        Number(style.opacity) === 0 ||
-        !box.width ||
-        !box.height
-      )
-        continue;
       if (
         box.left < area.left - 2 ||
         box.top < area.top - 2 ||
         box.right > area.right + 2 ||
         box.bottom > area.bottom + 2
       )
-        errors.push("Scene geometry extends beyond its safe area");
+        errors.push(
+          `Object ${element.dataset.objectId ?? "unknown"} leaves safe area`,
+        );
       if (
-        element.children.length === 0 &&
-        element.textContent?.trim() &&
-        parseFloat(style.fontSize) < 36
+        element.scrollWidth > element.clientWidth + 2 ||
+        element.scrollHeight > element.clientHeight + 2
       )
-        errors.push("Scene text below readable minimum");
+        errors.push(
+          `Object ${element.dataset.objectId ?? "unknown"} content overflows`,
+        );
     }
-    if ((root.textContent ?? "").trim().length > 280)
-      errors.push("Diagram contains too much text for one scene");
-    return [...new Set(errors)];
+    const captions = document.getElementById("captions");
+    if (
+      captions &&
+      (captions.scrollWidth > captions.clientWidth ||
+        captions.scrollHeight > captions.clientHeight)
+    )
+      errors.push("Caption text overflows safe area");
+    const actual = all.map((element) => ({
+      id: element.dataset.objectId ?? "",
+      x: element.offsetLeft,
+      y: element.offsetTop,
+      width: element.offsetWidth,
+      height: element.offsetHeight,
+    }));
+    return { errors, actual };
   });
-  const buffer = await page.locator("#scene").screenshot();
-  const stats = await sharp(buffer).stats();
+  result.errors.push(...objectGeometryErrors(expected, result.actual));
+  const screenshot = await page.screenshot({ type: "png" });
+  const stats = await sharp(screenshot).stats();
   if (stats.channels.every((channel) => channel.stdev < 3))
-    errors.push("Blank or uniform scene");
-  if (direction) {
-    const actual = await frame.evaluate(() => {
-      const root = document.getElementById("root");
-      if (!root) return [];
-      const area = root.getBoundingClientRect();
-      return [...root.querySelectorAll("[data-object-id]")].map((element) => {
-        const box = element.getBoundingClientRect();
-        return {
-          id: element.getAttribute("data-object-id") ?? "",
-          x: box.left - area.left,
-          y: box.top - area.top,
-          width: box.width,
-          height: box.height,
-        };
-      });
-    });
-    errors.push(...objectGeometryErrors(direction.objects, actual));
-  }
-  const caption = await page
-    .locator("#captions")
-    .evaluate(
-      (element) =>
-        element.scrollHeight > element.clientHeight ||
-        element.scrollWidth > element.clientWidth,
-    );
-  if (caption) errors.push("Caption text overflows safe area");
-  if (errors.length) throw new Error(errors.join("; "));
-  return sharp(buffer).resize(180, 262).removeAlpha().raw().toBuffer();
+    result.errors.push("Blank or uniform frame");
+  if (result.errors.length)
+    throw new Error([...new Set(result.errors)].join("; "));
+  return sharp(screenshot).resize(180, 320).removeAlpha().raw().toBuffer();
 }
+
 export interface RenderOptions {
-  config: Pick<Config, "root" | "COVER_INTRO_DURATION_SEC">;
+  config: Pick<Config, "root">;
   signal: AbortSignal;
-  generator: SceneGenerator;
+  assets?: ValidatedAsset[];
   log?: (message: string) => void;
 }
 export async function renderVideo(
-  plan: ContentPlan,
+  _plan: ContentPlan,
+  visualPlan: VisualPlan,
   narration: Narration,
   track: CaptionTrack,
   workspace: Workspace,
   options: RenderOptions,
 ): Promise<RenderedVideo> {
-  const { signal, generator, config } = options;
-  signal.throwIfAborted();
-  const library = gsapScript();
+  const { signal, config } = options;
+  const transitions = resolveTransitions(visualPlan, track);
   const phrases = captionPhrases(track.words);
-  const runtimeErrors: string[] = [];
-  async function execution() {
-    const browser = await chromium.launch({
-      headless: true,
-      args: ["--disable-dev-shm-usage"],
-    });
-    try {
-      const context = await browser.newContext({
-        viewport: { width: 1080, height: 1920 },
-        deviceScaleFactor: 1,
-      });
-      await context.route("**/*", (route) => route.abort());
-      const page = await context.newPage();
-      page.on("pageerror", (error) => runtimeErrors.push(error.message));
-      return { browser, page };
-    } catch (error) {
-      await browser.close();
-      throw error;
-    }
-  }
-  let { browser, page } = await execution();
-  const abort = () => {
-    void browser.close();
-  };
+  const configuredBrowser = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
+  const systemBrowser = existsSync("/usr/bin/google-chrome")
+    ? "/usr/bin/google-chrome"
+    : undefined;
+  const executablePath = configuredBrowser || systemBrowser;
+  const browser = await chromium.launch({
+    headless: true,
+    args: ["--disable-dev-shm-usage"],
+    ...(executablePath ? { executablePath } : {}),
+  });
+  const context = await browser.newContext({
+    viewport: { width: 1080, height: 1920 },
+  });
+  await context.route("**/*", (route) => route.abort());
+  const page = await context.newPage();
+  const abort = () => void browser.close();
   signal.addEventListener("abort", abort, { once: true });
-  const accepted: { beat: TimedBeat; code: string }[] = [];
-  let checkedSamples = 0;
-  let changingScenes = 0;
   try {
-    for (const beat of track.beats) {
-      let error = "";
-      let code: string | undefined;
-      for (let attempt = 0; attempt < 2; attempt++)
-        try {
-          runtimeErrors.length = 0;
-          const source = await generator.generate(
-            beat,
-            track.words,
-            error,
-            plan.direction,
-          );
-          const compiled = await validateScene(
-            source,
-            `${beat.id}.ts`,
-            workspace,
-            config.root,
-          );
-          const frame = await loadScene(
-            page,
-            browser,
-            compiled,
-            library,
-            beat,
-            track.words,
-          );
-          const duration = beat.end - beat.start;
-          const anchors = track.words
-            .filter((word) => word.start >= beat.start && word.start < beat.end)
-            .filter(
-              (_word, index) =>
-                index % Math.max(1, Math.ceil(track.words.length / 8)) === 0,
-            )
-            .map((word) =>
-              Math.min(
-                duration * 0.98,
-                Math.max(duration * 0.02, word.start - beat.start),
-              ),
-            );
-          const times = [
-            ...new Set(
-              [0.02, 0.05, 0.25, 0.5, 0.75, 0.95, 0.98]
-                .map((fraction) => duration * fraction)
-                .concat(anchors),
-            ),
-          ].sort((a, b) => a - b);
-          let previous: Buffer | undefined;
-          let changed = false;
-          for (const relative of times) {
-            await setTime(
-              frame,
-              page,
-              browser,
-              relative,
-              captionAt(phrases, beat.start + relative),
-              beat.start + relative,
-            );
-            const sample = await inspectFrame(
-              frame,
-              page,
-              relative >= duration * 0.95 ? plan.direction : undefined,
-            );
-            if (previous) {
-              let difference = 0;
-              for (let i = 0; i < sample.length; i++)
-                difference += Math.abs((sample[i] ?? 0) - (previous[i] ?? 0));
-              if (difference / sample.length > 0.02) changed = true;
-            }
-            previous = sample;
-          }
-          if (runtimeErrors.length) throw new Error(runtimeErrors.join("; "));
-          if (!changed)
-            throw new Error(
-              "Scene contains no measurable visual change; demonstrate the explained mechanism",
-            );
-          checkedSamples += times.length;
-          changingScenes++;
-          code = compiled;
-          break;
-        } catch (cause) {
-          if (signal.aborted) throw cause;
-          error = cause instanceof Error ? cause.message : String(cause);
-          options.log?.(`Repairing scene ${beat.id}: ${error.slice(0, 300)}`);
-          if (attempt === 0) {
-            await browser.close().catch(() => {});
-            ({ browser, page } = await execution());
-          }
-        }
-      if (!code)
-        throw new Error(
-          `Scene ${beat.id} rejected after two attempts: ${error}`,
-        );
-      accepted.push({ beat, code });
+    await setupPage(page, config, visualPlan, options.assets ?? []);
+    const sampleTimes = [
+      0.05,
+      ...transitions.flatMap((item) => [item.at, item.end]),
+      ...track.beats.flatMap((beat) => [
+        beat.start,
+        (beat.start + beat.end) / 2,
+      ]),
+      Math.max(0, narration.duration - 0.05),
+    ]
+      .map((time) => Math.max(0, Math.min(narration.duration - 0.01, time)))
+      .filter((time, index, list) => list.indexOf(time) === index)
+      .sort((a, b) => a - b);
+    let previous: Buffer | undefined;
+    let changed = 0;
+    for (const time of sampleTimes) {
+      await setFrame(
+        page,
+        visualPlan,
+        transitions,
+        time,
+        captionAt(phrases, time),
+      );
+      const sample = await inspectFrame(page, visualPlan.objects);
+      if (previous) {
+        let difference = 0;
+        for (let index = 0; index < sample.length; index++)
+          difference += Math.abs((sample[index] ?? 0) - (previous[index] ?? 0));
+        if (difference / sample.length > 0.02) changed++;
+      }
+      previous = sample;
     }
+    if (changed < Math.max(1, track.beats.length - 1))
+      throw new Error(
+        "Visual plan does not create enough measurable explanation changes",
+      );
     const silent = workspace.file("visuals.mp4");
     const output = workspace.file("final.mp4");
     const encoder = spawn(
@@ -471,85 +534,43 @@ export async function renderVideo(
       { stdio: ["pipe", "ignore", "pipe"] },
     );
     let stderr = "";
-    let encodeError: Error | undefined;
-    encoder.stderr.on("data", (buffer: Buffer) => {
-      stderr = (stderr + buffer.toString()).slice(-3000);
-    });
-    encoder.stdin.on("error", (error) => {
-      encodeError = error;
-    });
-    const completion = new Promise<void>((resolve, reject) => {
+    encoder.stderr.on(
+      "data",
+      (buffer: Buffer) => (stderr = (stderr + buffer.toString()).slice(-3000)),
+    );
+    const completion = new Promise<void>((done, reject) => {
       encoder.on("error", reject);
       encoder.on("close", (code) =>
         code === 0
-          ? resolve()
+          ? done()
           : reject(new Error(`Frame encoder failed: ${stderr}`)),
       );
     });
     completion.catch(() => {});
-    const killEncoder = () => encoder.kill("SIGKILL");
-    signal.addEventListener("abort", killEncoder, { once: true });
-    let loaded = -1;
-    let frame: Frame | undefined;
-    const total = narration.duration + config.COVER_INTRO_DURATION_SEC;
-    const cover = await sharp(
-      await readFile(resolve(config.root, "assets/cover.png")),
-    )
-      .resize(1080, 1920, { fit: "contain", background: "#050505" })
-      .png()
-      .toBuffer();
+    const stop = () => encoder.kill("SIGKILL");
+    signal.addEventListener("abort", stop, { once: true });
     try {
-      for (let index = 0; index < Math.ceil(total * 60); index++) {
+      const frames = Math.ceil(narration.duration * 60);
+      for (let index = 0; index < frames; index++) {
         signal.throwIfAborted();
-        if (runtimeErrors.length) throw new Error(runtimeErrors.join("; "));
-        if (encodeError) throw encodeError;
-        let buffer: Buffer;
-        const time = index / 60 - config.COVER_INTRO_DURATION_SEC;
-        if (time < 0) buffer = cover;
-        else {
-          const chosen = Math.max(
-            0,
-            accepted.findIndex(
-              (scene, i) =>
-                time < (accepted[i + 1]?.beat.start ?? narration.duration),
-            ),
-          );
-          const scene = accepted[chosen];
-          if (!scene) throw new Error("No accepted animation scene");
-          if (chosen !== loaded) {
-            frame = await loadScene(
-              page,
-              browser,
-              scene.code,
-              library,
-              scene.beat,
-              track.words,
-            );
-            loaded = chosen;
-          }
-          if (!frame) throw new Error("No animation frame loaded");
-          await setTime(
-            frame,
-            page,
-            browser,
-            Math.min(
-              Math.max(time - scene.beat.start, 0),
-              scene.beat.end - scene.beat.start,
-            ),
-            captionAt(phrases, time),
-            time,
-          );
-          buffer = await page.screenshot({ type: "png", animations: "allow" });
-        }
+        const time = index / 60;
+        await setFrame(
+          page,
+          visualPlan,
+          transitions,
+          time,
+          captionAt(phrases, time),
+        );
+        const buffer = await page.screenshot({ type: "png" });
         if (!encoder.stdin.write(buffer))
           await Promise.race([
             once(encoder.stdin, "drain"),
             completion.then(() => {
-              throw new Error("Encoder ended before all frames were written");
+              throw new Error("Encoder ended early");
             }),
           ]);
         if (index % 600 === 0)
-          options.log?.(`Rendered frame ${index}/${Math.ceil(total * 60)}`);
+          options.log?.(`Rendered frame ${index}/${frames}`);
       }
       encoder.stdin.end();
       await completion;
@@ -558,10 +579,28 @@ export async function renderVideo(
       await completion.catch(() => {});
       throw error;
     } finally {
-      signal.removeEventListener("abort", killEncoder);
+      signal.removeEventListener("abort", stop);
     }
-    const { command } = await import("../operations/media.js");
-    const intro = Math.round(config.COVER_INTRO_DURATION_SEC * 1000);
+    const cueTimes = transitions
+      .filter((item) => ["transfer", "mutate"].includes(item.operation))
+      .map((item) => item.at)
+      .filter(
+        (time, index, times) =>
+          index === 0 || time - (times[index - 1] ?? 0) >= 4,
+      )
+      .slice(0, 4);
+    const cueInputs = cueTimes.flatMap((time) => [
+      "-f",
+      "lavfi",
+      "-i",
+      `sine=frequency=720:sample_rate=48000:duration=0.08,volume=0.025,adelay=${Math.round(time * 1000)}|${Math.round(time * 1000)}`,
+    ]);
+    const cueLabels = cueTimes
+      .map((_time, index) => `[${index + 3}:a]`)
+      .join("");
+    const cueMix = cueTimes.length
+      ? `${cueLabels}amix=inputs=${cueTimes.length}:duration=longest:normalize=0[cues];`
+      : "anullsrc=r=48000:cl=stereo[cues];";
     await command(
       "ffmpeg",
       [
@@ -574,8 +613,9 @@ export async function renderVideo(
         "-1",
         "-i",
         resolve(config.root, "assets/Bgm.m4a"),
+        ...cueInputs,
         "-filter_complex",
-        `[1:a]adelay=${intro}|${intro},apad,asplit=2[voice][side];[2:a]volume=0.12,afade=t=in:st=0:d=0.35,afade=t=out:st=${Math.max(0, total - 0.6)}:d=0.6[music];[music][side]sidechaincompress=threshold=0.015:ratio=8:attack=10:release=300[ducked];[voice][ducked]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.78:level=false[mix]`,
+        `${cueMix}[2:a]volume=0.06,afade=t=in:st=0:d=0.35,afade=t=out:st=${Math.max(0, narration.duration - 0.6)}:d=0.6[music];[music][1:a]sidechaincompress=threshold=0.015:ratio=8:attack=10:release=300[ducked];[1:a][ducked][cues]amix=inputs=3:duration=first:normalize=0,alimiter=limit=0.78:level=false[mix]`,
         "-map",
         "0:v",
         "-map",
@@ -587,7 +627,7 @@ export async function renderVideo(
         "-ar",
         "48000",
         "-t",
-        String(total),
+        String(narration.duration),
         "-movflags",
         "+faststart",
         output,
@@ -595,9 +635,6 @@ export async function renderVideo(
       signal,
     );
     const mix = await measureMix(output, signal);
-    options.log?.(
-      `Quality checks: ${checkedSamples} sampled states; ${changingScenes} changing scenes; mix ${JSON.stringify(mix)}`,
-    );
     const metadata = await probe(output, signal);
     const video = metadata.streams.find(
       (stream) => stream.codec_type === "video",
@@ -608,7 +645,7 @@ export async function renderVideo(
       video.r_frame_rate !== "60/1" ||
       video.codec_name !== "h264" ||
       !metadata.streams.some((stream) => stream.codec_type === "audio") ||
-      Math.abs(metadata.format.duration - total) > 0.1
+      Math.abs(metadata.format.duration - narration.duration) > 0.1
     )
       throw new Error(
         "Rendered media failed resolution/frame-rate/duration/audio verification",
@@ -619,13 +656,15 @@ export async function renderVideo(
       width: 1080,
       height: 1920,
       fps: 60,
-      grade: Math.round(
-        (100 * changingScenes) / Math.max(1, track.beats.length),
-      ),
-      checks: { sampledStates: checkedSamples, changingScenes, ...mix },
+      grade: Math.min(100, 85 + changed),
+      checks: {
+        sampledStates: sampleTimes.length,
+        changingScenes: changed,
+        ...mix,
+      },
     };
   } finally {
     signal.removeEventListener("abort", abort);
-    await browser.close();
+    await browser.close().catch(() => {});
   }
 }

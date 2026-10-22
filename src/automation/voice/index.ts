@@ -6,9 +6,9 @@ import { command, assertAudio } from "../operations/media.js";
 import { twice } from "../operations/http.js";
 
 export function validateNarrationDuration(duration: number) {
-  if (duration < 40 || duration > 75)
+  if (duration < 35 || duration > 65)
     throw new Error(
-      `Narration must end naturally within 40–75 seconds: ${duration.toFixed(1)}s`,
+      `Narration must end naturally within 35–65 seconds: ${duration.toFixed(1)}s`,
     );
 }
 
