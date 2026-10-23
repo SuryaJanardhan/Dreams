@@ -390,7 +390,7 @@ export class Sheets {
     }
     await this.write([
       {
-        range: "PrimitiveReview!A1:H1",
+        range: "PrimitiveReview!A1:J1",
         values: [
           [
             "Job ID",
@@ -401,6 +401,8 @@ export class Sheets {
             "Promote",
             "Reviewed At",
             "Notes",
+            "Actions Artifact",
+            "Preview File",
           ],
         ],
       },
@@ -601,7 +603,11 @@ export class Sheets {
     }
     return result;
   }
-  async recordPrimitiveReviews(jobId: string, specs: PrimitiveSpec[]) {
+  async recordPrimitiveReviews(
+    jobId: string,
+    specs: PrimitiveSpec[],
+    artifactUrl?: string,
+  ) {
     if (!specs.length) return this.primitiveReviewLink();
     const existing = await this.read("PrimitiveReview", "A2:B");
     const known = new Set(
@@ -618,10 +624,12 @@ export class Sheets {
         "FALSE",
         "",
         "Generated and validated; check Promote to reuse in later jobs",
+        artifactUrl ?? "Available in the local .primitive-reviews directory",
+        `${jobId}/${spec.id}.svg`,
       ]);
     if (rows.length)
       await this.http.response(
-        `${this.base}/values/${encodeURIComponent(this.range("PrimitiveReview", "A:H"))}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
+        `${this.base}/values/${encodeURIComponent(this.range("PrimitiveReview", "A:J"))}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
         {
           method: "POST",
           headers: await this.headers(),

@@ -32,6 +32,23 @@ const reviewSchema = z.object({
     )
     .max(8),
 });
+export type VisualQualityIssue = z.infer<typeof reviewSchema>["issues"][number];
+
+export class VisualQualityError extends Error {
+  constructor(
+    readonly issues: VisualQualityIssue[],
+    readonly scores: number[],
+  ) {
+    super(
+      `Visual quality failed: scores ${scores.join(", ")}; ${issues
+        .map(
+          (issue) =>
+            `${issue.beatId}${issue.objectId ? `/${issue.objectId}` : ""}: ${issue.defect}`,
+        )
+        .join("; ")}`,
+    );
+  }
+}
 
 export function requireVisualQuality(review: z.infer<typeof reviewSchema>) {
   const scores = [
@@ -46,14 +63,7 @@ export function requireVisualQuality(review: z.infer<typeof reviewSchema>) {
     review.captionReadability,
   ];
   if (scores.some((score) => score < 80) || review.issues.length)
-    throw new Error(
-      `Visual quality failed: scores ${scores.join(", ")}; ${review.issues
-        .map(
-          (issue) =>
-            `${issue.beatId}${issue.objectId ? `/${issue.objectId}` : ""}: ${issue.defect}`,
-        )
-        .join("; ")}`,
-    );
+    throw new VisualQualityError(review.issues, scores);
   return Math.round(
     scores.reduce((sum, score) => sum + score, 0) / scores.length,
   );

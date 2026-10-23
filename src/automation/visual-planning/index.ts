@@ -432,13 +432,23 @@ export async function repairVisualPlan(
   content: ContentPlan,
   rejected: VisualPlan,
   feedback: string,
+  targets?: { beatIds: string[]; objectIds: string[] },
 ) {
   const repaired = await gemini.generate(
     config.GEMINI_VISUAL_MODEL,
     config.GEMINI_API_KEY_FOR_VISUALS,
-    `Repair this continuous declarative VisualStory after automated frame review. Content: ${JSON.stringify(content)}. Rejected story: ${JSON.stringify(rejected)}. Review defects: ${JSON.stringify(feedback)}. Return the complete corrected VisualStory JSON. Preserve valid world IDs, asset intents and primitive specifications. Change only the layout, timeline actions, camera actions, labels or semantic states required to fix the defects. Preserve one continuous world; do not create scene resets or executable code.`,
+    `Repair this continuous declarative VisualStory after automated frame review. Content: ${JSON.stringify(content)}. Rejected story: ${JSON.stringify(rejected)}. Review defects: ${JSON.stringify(feedback)}. Allowed repair targets: ${JSON.stringify(targets ?? "the smallest unit necessary")}. Return the complete corrected VisualStory JSON. Preserve valid world IDs, asset intents and primitive specifications. Change only the listed beats and objects when targets are supplied. Preserve one continuous world; do not create scene resets or executable code.`,
     visualPlanSchema,
   );
+  assertRepairScope(rejected, repaired, targets);
+  return validateVisualPlan(repaired, content);
+}
+
+export function assertRepairScope(
+  rejected: VisualPlan,
+  repaired: VisualPlan,
+  targets?: { beatIds: string[]; objectIds: string[] },
+) {
   if (
     JSON.stringify(rejected.assetIntents) !==
       JSON.stringify(repaired.assetIntents) ||
@@ -448,5 +458,54 @@ export async function repairVisualPlan(
     throw new Error(
       "Visual quality repair cannot change validated assets or primitive specifications",
     );
-  return validateVisualPlan(repaired, content);
+  if (!targets) return;
+  const beatIds = new Set(targets.beatIds);
+  const objectIds = new Set(targets.objectIds);
+  const changedOutsideScope = <T extends { id: string }>(
+    previous: T[],
+    next: T[],
+    allowed: (item: T) => boolean,
+    label: string,
+  ) => {
+    const nextById = new Map(next.map((item) => [item.id, item]));
+    for (const item of previous) {
+      const replacement = nextById.get(item.id);
+      if (!replacement) {
+        if (!allowed(item))
+          throw new Error(`Repair removed unaffected ${label} ${item.id}`);
+        continue;
+      }
+      if (
+        !allowed(item) &&
+        JSON.stringify(item) !== JSON.stringify(replacement)
+      )
+        throw new Error(`Repair changed unaffected ${label} ${item.id}`);
+    }
+    const previousIds = new Set(previous.map((item) => item.id));
+    for (const item of next)
+      if (!previousIds.has(item.id) && !allowed(item))
+        throw new Error(`Repair added out-of-scope ${label} ${item.id}`);
+  };
+  changedOutsideScope(
+    rejected.world,
+    repaired.world,
+    (object) => objectIds.has(object.id),
+    "object",
+  );
+  changedOutsideScope(
+    rejected.timeline,
+    repaired.timeline,
+    (action) =>
+      beatIds.has(action.beatId) ||
+      action.objectIds.some((id) => objectIds.has(id)),
+    "timeline action",
+  );
+  changedOutsideScope(
+    rejected.camera,
+    repaired.camera,
+    (action) =>
+      beatIds.has(action.beatId) ||
+      action.objectIds.some((id) => objectIds.has(id)),
+    "camera action",
+  );
 }

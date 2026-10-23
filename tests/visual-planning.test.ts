@@ -6,6 +6,7 @@ import type {
   VisualPlan,
 } from "../src/automation/domain.js";
 import {
+  assertRepairScope,
   parsePrimitiveSpec,
   validateVisualPlan,
   visualPlanSchema,
@@ -147,6 +148,43 @@ test("visual schemas reject executable escape fields and invalid primitives", ()
         ],
       }),
     /view box/,
+  );
+});
+
+test("targeted visual repair cannot rewrite unaffected objects or beats", () => {
+  const allowed = structuredClone(plan);
+  allowed.world[0] = { ...allowed.world[0]!, label: "Message queue" };
+  assert.doesNotThrow(() =>
+    assertRepairScope(plan, allowed, {
+      beatIds: ["queue"],
+      objectIds: ["queue"],
+    }),
+  );
+  const outOfScope = structuredClone(plan);
+  outOfScope.world[1] = { ...outOfScope.world[1]!, label: "Event log" };
+  assert.throws(
+    () =>
+      assertRepairScope(plan, outOfScope, {
+        beatIds: ["queue"],
+        objectIds: ["queue"],
+      }),
+    /unaffected object stream/,
+  );
+  const changedAsset = structuredClone(plan);
+  changedAsset.assetIntents.push({
+    id: "new-image",
+    query: "unapproved image",
+    purpose: "Change a validated dependency",
+    requiredFeatures: ["something"],
+    sourcePreference: "official-first",
+  });
+  assert.throws(
+    () =>
+      assertRepairScope(plan, changedAsset, {
+        beatIds: ["queue"],
+        objectIds: ["queue"],
+      }),
+    /validated assets/,
   );
 });
 

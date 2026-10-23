@@ -14,10 +14,11 @@ import {
   repairVisualPlan,
 } from "./visual-planning/index.js";
 import { createAssets } from "./assets/index.js";
+import { writePrimitiveReviewArtifacts } from "./primitives/index.js";
 import { createVoice } from "./voice/index.js";
 import { createCaptions } from "./captions/index.js";
 import { renderVideo } from "./rendering/index.js";
-import { createVisualQuality } from "./quality/index.js";
+import { createVisualQuality, VisualQualityError } from "./quality/index.js";
 import { Publisher } from "./publishing/index.js";
 import { runWorkflow } from "./workflow/index.js";
 import { message } from "./domain.js";
@@ -103,8 +104,13 @@ export async function main() {
       content: createContent(config, gemini),
       promotedPrimitives: () => sheets.promotedPrimitives(parsePrimitiveSpec),
       visualPlan: createVisualPlan(config, gemini),
-      recordPrimitiveReviews: (jobId, specs) =>
-        sheets.recordPrimitiveReviews(jobId, specs),
+      recordPrimitiveReviews: async (jobId, specs) => {
+        await writePrimitiveReviewArtifacts(config.root, jobId, specs);
+        const artifactUrl = process.env.GITHUB_RUN_ID
+          ? `https://github.com/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}#artifacts`
+          : undefined;
+        return sheets.recordPrimitiveReviews(jobId, specs, artifactUrl);
+      },
       assets: createAssets(config, http, gemini),
       voice: createVoice(config, signal),
       captions: createCaptions(config, http),
@@ -135,6 +141,20 @@ export async function main() {
             plan,
             visualPlan,
             error instanceof Error ? error.message : String(error),
+            error instanceof VisualQualityError
+              ? {
+                  beatIds: [
+                    ...new Set(error.issues.map((issue) => issue.beatId)),
+                  ],
+                  objectIds: [
+                    ...new Set(
+                      error.issues.flatMap((issue) =>
+                        issue.objectId ? [issue.objectId] : [],
+                      ),
+                    ),
+                  ],
+                }
+              : undefined,
           );
           const rerendered = await renderVideo(
             plan,

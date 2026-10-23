@@ -24,7 +24,7 @@ The former generated-scene-code validator and scene contract were removed. Brows
 
 The task tab accepts aliases documented in `src/automation/sheets/index.ts`. `Idea`, `Title`, or `Topic` plus `Status` are required. Only `Not Posted` is eligible. Optional inputs are `Description`/`Context`, `Narration`/`Script`, `Type`, `Audience`, and comma/newline-separated `Source URLs`.
 
-`AutomationControl` contains the persistent `PAUSED` flag. `PrimitiveReview` stores generated primitive specifications, validation status, a `Promote` checkbox, review timestamp, and notes. Checked primitives are parsed and revalidated on a later run before they enter the trusted registry. Email contains an inline preview and a button opening that tab.
+`AutomationControl` contains the persistent `PAUSED` flag. `PrimitiveReview` stores generated primitive specifications, validation status, a `Promote` checkbox, review timestamp, notes, Actions artifact location, and SVG preview filename. Checked primitives are parsed and revalidated on a later run before they enter the trusted registry. Email contains an inline preview and a button opening that tab. GitHub Actions retains generated primitive JSON, SVG previews, and a manifest for seven days.
 
 ## Typed creative contracts
 
