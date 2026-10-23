@@ -47,6 +47,9 @@ jobs:
           cache: npm
       - name: Install and check TypeScript modules
         run: npm ci && npm run typecheck:automation
+      - name: Validate provider credentials without publishing
+        if: github.event_name == 'workflow_dispatch'
+        run: npm run diagnose:credentials
       - name: Check Sheet control and eligibility before expensive setup
         id: gate
         run: node --import tsx src/automation/gate.ts
