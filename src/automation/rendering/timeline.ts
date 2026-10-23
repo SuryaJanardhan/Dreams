@@ -112,10 +112,14 @@ export function compileTimeline(
   track: CaptionTrack,
 ): CompiledTimeline {
   const layout = new Map(plan.world.map((object) => [object.id, object.box]));
+  const startedBeats = new Set<string>();
   const actions = plan.timeline.map((action) => {
     const timing = anchorTiming(action.beatId, action.anchor, track);
-    if (timing.first.start - timing.beat.start > 1.5)
-      throw new Error(`Beat ${action.beatId} remains visually idle too long`);
+    if (!startedBeats.has(action.beatId)) {
+      startedBeats.add(action.beatId);
+      if (timing.first.start - timing.beat.start > 1.5)
+        throw new Error(`Beat ${action.beatId} remains visually idle too long`);
+    }
     const fromLayout = (action.layout ?? []).flatMap((placement) => {
       const box = layout.get(placement.objectId);
       return box ? [{ objectId: placement.objectId, box }] : [];

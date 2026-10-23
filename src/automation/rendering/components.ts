@@ -57,7 +57,7 @@ function shell(object: VisualObject, body: string, extraClass = "") {
 function illustrated(object: VisualObject, inner: string) {
   return shell(
     object,
-    `<svg class="illustration" viewBox="0 0 100 70" aria-hidden="true"><path class="paper-fill organic-outline" d="${organicRect(object.id)}"/>${inner}</svg>${label(object)}`,
+    `<svg class="illustration" viewBox="0 0 100 70" aria-hidden="true">${inner}</svg>${label(object)}`,
   );
 }
 function table(object: VisualObject) {
@@ -156,7 +156,7 @@ export function renderObject(
     case "browser":
       return illustrated(
         object,
-        `<path class="ink no-fill" d="M15 24h70"/><circle class="semantic-fill" cx="22" cy="17" r="2.4"/><circle class="warning-fill" cx="30" cy="17" r="2.4"/><path class="accent-line" d="M25 39h50M25 48h32"/>`,
+        `<path class="semantic-fill ink" d="${organicRect(`${object.id}-window`, 10)}"/><path class="ink no-fill" d="M12 25h76"/><circle class="accent-fill" cx="20" cy="18" r="2.4"/><circle class="warning-fill ink" cx="28" cy="18" r="2.4"/><path class="accent-line" d="M24 39h52M24 49h34"/>`,
       );
     case "client":
       return illustrated(
