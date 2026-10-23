@@ -58,9 +58,10 @@ function fixture() {
     }),
     promotedPrimitives: async () => [],
     visualPlan: async () => ({
-      version: 1,
-      objects: [],
-      beats: [],
+      version: 2,
+      world: [],
+      timeline: [],
+      camera: [],
       assetIntents: [],
       proposedPrimitives: [],
     }),

@@ -18,6 +18,9 @@ const reviewSchema = z.object({
   visualRelevance: z.number().int().min(0).max(100),
   cleanliness: z.number().int().min(0).max(100),
   consistency: z.number().int().min(0).max(100),
+  continuity: z.number().int().min(0).max(100),
+  illustrationQuality: z.number().int().min(0).max(100),
+  motionCoherence: z.number().int().min(0).max(100),
   captionReadability: z.number().int().min(0).max(100),
   issues: z
     .array(
@@ -37,6 +40,9 @@ export function requireVisualQuality(review: z.infer<typeof reviewSchema>) {
     review.visualRelevance,
     review.cleanliness,
     review.consistency,
+    review.continuity,
+    review.illustrationQuality,
+    review.motionCoherence,
     review.captionReadability,
   ];
   if (scores.some((score) => score < 80) || review.issues.length)
@@ -104,7 +110,7 @@ export function createVisualQuality(
     const review = await gemini.vision(
       config.GEMINI_VISUAL_MODEL,
       config.GEMINI_API_KEY_FOR_VISUALS,
-      `Audit these eight ordered sampled frames from one technical reel. Narration and beats: ${JSON.stringify(content)}. Declarative plan: ${JSON.stringify(plan)}. Return JSON {technicalMeaning,sequenceClarity,visualRelevance,cleanliness,consistency,captionReadability,issues:[{beatId,objectId?,defect}]}. Judge whether the images visibly explain the stated causal sequence, use the white/black/blue/green/yellow/red semantic system consistently, remain uncluttered, preserve object identity, and keep captions readable. Be strict and name only defects that require a visual-plan change.`,
+      `Audit these eight ordered sampled frames from one continuous technical reel. Narration and beats: ${JSON.stringify(content)}. VisualStory: ${JSON.stringify(plan)}. Return JSON {technicalMeaning,sequenceClarity,visualRelevance,cleanliness,consistency,continuity,illustrationQuality,motionCoherence,captionReadability,issues:[{beatId,objectId?,defect}]}. Continuity means the frames look like one persistent world evolving rather than independent slides: object identity, position history and visual context remain understandable. Illustration quality means trusted components look intentionally drawn and technically meaningful rather than generic bordered boxes. Motion coherence means state changes, internal actions, curved transfers, reflows and camera framing visibly support the narration without unexplained jumps. Also judge the fixed semantic palette, cleanliness and caption readability. Be strict and name only defects that require a VisualStory change.`,
       contactSheet,
       "image/jpeg",
       reviewSchema,

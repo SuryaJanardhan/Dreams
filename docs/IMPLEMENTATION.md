@@ -4,21 +4,21 @@ The production entry point is `src/automation/main.ts`. It composes deep modules
 
 ## Active stages
 
-| Stage           | Module                              | Durable result                                                           |
-| --------------- | ----------------------------------- | ------------------------------------------------------------------------ |
-| Initialization  | `workspace`, `sheets`, `operations` | Claimed task and isolated workspace                                      |
-| Research        | `research`                          | Summary, source links, and evidence mode                                 |
-| Content         | `content`                           | Detected type, narration, semantic beats, and platform copy              |
-| Visual planning | `visual-planning`                   | Strict `VisualPlan`, fixed objects, word anchors, assets, and primitives |
-| Assets          | `assets`                            | Decoded and multimodally validated job-local images                      |
-| Voice           | `voice`                             | Validated 24 kHz narration from the approved reference                   |
-| Captions        | `captions`                          | Actual-word timings and timed beats                                      |
-| Rendering       | `rendering`                         | Deterministic white-diagram master with captions and audio mix           |
-| Quality         | `quality`                           | Sampled-frame multimodal review and one targeted plan repair             |
-| Publishing      | `publishing`                        | Three persisted provider outcomes and canonical links                    |
-| Finalization    | `workflow`, `sheets`, `email`       | Cleanup, pause state, final progress, and notification                   |
+| Stage           | Module                              | Durable result                                                                           |
+| --------------- | ----------------------------------- | ---------------------------------------------------------------------------------------- |
+| Initialization  | `workspace`, `sheets`, `operations` | Claimed task and isolated workspace                                                      |
+| Research        | `research`                          | Summary, source links, and evidence mode                                                 |
+| Content         | `content`                           | Detected type, narration, semantic beats, and platform copy                              |
+| Visual planning | `visual-planning`                   | Continuous `VisualStory`, persistent world, word anchors, camera, assets, and primitives |
+| Assets          | `assets`                            | Decoded and multimodally validated job-local images                                      |
+| Voice           | `voice`                             | Validated 24 kHz narration from the approved reference                                   |
+| Captions        | `captions`                          | Actual-word timings and timed beats                                                      |
+| Rendering       | `rendering`                         | Deterministic white-diagram master with captions and audio mix                           |
+| Quality         | `quality`                           | Sampled-frame multimodal review and one targeted plan repair                             |
+| Publishing      | `publishing`                        | Three persisted provider outcomes and canonical links                                    |
+| Finalization    | `workflow`, `sheets`, `email`       | Cleanup, pause state, final progress, and notification                                   |
 
-The former generated-scene-code validator and scene contract were removed. Browser rendering now interprets validated data only.
+The former generated-scene-code validator and scene contract were removed. Browser rendering now interprets validated data only. See [CONTINUOUS_VISUAL_SYSTEM.md](CONTINUOUS_VISUAL_SYSTEM.md) for the persistent scene graph, illustration kit, motion presets, connector routing, and camera model.
 
 ## Sheet contract
 
@@ -30,7 +30,7 @@ The task tab accepts aliases documented in `src/automation/sheets/index.ts`. `Id
 
 `domain.ts` defines the boundaries between tasks, research, story plans, visual plans, assets, narration, captions, rendered media, and publication outcomes. Zod validates all AI/provider responses. Stage-critical outputs become distinct types; the renderer cannot consume arbitrary prompt text or executable code.
 
-Visual plans use fixed 900×1250 layout coordinates inside the 1080×1920 master. Every object has a stable ID, primitive kind, semantic color, and box. Beat transitions reference exact narration phrases, which resolve to final AssemblyAI word timings. Active beats are limited to seven objects and reject overlap, missing references, unknown assets/primitives, invalid anchors, and out-of-bounds shapes.
+Visual stories use 900×1250 world coordinates inside the 1080×1920 master. Every object has a stable ID, illustrated component kind, semantic color, and initial box. One global timeline references exact narration phrases, which resolve to final AssemblyAI word timings. Objects persist across beats, and position changes require interpolated `reflow` actions. The validator rejects invalid lifecycle, beat ordering, overlap, missing references, unknown assets/primitives, late opening motion, unsafe camera targets, and out-of-bounds shapes.
 
 ## External assets
 
@@ -38,7 +38,7 @@ The asset planner uses Gemini Google Search grounding through the existing visua
 
 ## Rendering and audio
 
-Playwright builds trusted HTML/SVG primitives and seeks every frame from narration time. Persistent layout uses CSS layout coordinates; transforms affect only purposeful entrances and focus. Deterministic sampled-frame gates check safe areas, overflow, density, geometry, blank output, and measurable explanation changes.
+Playwright builds trusted organic SVG illustrations and evaluates every frame from narration time. The pure timeline engine applies stable object lifecycle, easing, internal component actions, collision-aware curved connectors, smooth reflow, semantic color blending, and restrained camera framing. Deterministic sampled-frame gates inspect the diagram separately from captions and check overflow, density, dynamic geometry, blank output, continuity, and meaningful explanation changes.
 
 FFmpeg encodes H.264 at 1080×1920/60 fps. Narration is the duration authority. Background music is mixed quietly with voice ducking. Up to four rate-limited soft cues mark transfers or mutations. The encoded master must contain audio, match duration/resolution/frame rate, stay under the true-peak threshold, and pass loudness measurement.
 

@@ -1,9 +1,9 @@
-import { chromium, type Page } from "playwright";
+import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { readFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
 import { resolve } from "node:path";
+import { chromium, type Page } from "playwright";
 import sharp from "sharp";
 import type {
   CaptionTrack,
@@ -13,82 +13,32 @@ import type {
   ValidatedAsset,
   VisualObject,
   VisualPlan,
-  VisualTransition,
   Workspace,
 } from "../domain.js";
 import type { Config } from "../operations/config.js";
 import { command, measureMix, probe } from "../operations/media.js";
 import { captionAt, captionPhrases } from "./caption-layout.js";
+import { renderObject } from "./components.js";
+import {
+  compileTimeline,
+  evaluateTimelineAt,
+  type FrameState,
+} from "./timeline.js";
 
-const palette = {
-  structure: "#151515",
-  active: "#2878d0",
-  success: "#3f8f62",
-  warning: "#e7c536",
-  failure: "#cf4e46",
-} as const;
 const css = `
 @font-face{font-family:Diagram;src:url(data:font/ttf;base64,__FONT__)}
 *{box-sizing:border-box}html,body{margin:0;width:1080px;height:1920px;overflow:hidden;background:#fff;color:#151515;font-family:Diagram,Arial,sans-serif}
 #yellow{position:absolute;left:0;top:80px;width:250px;height:18px;background:#e7c536}#black{position:absolute;left:250px;top:80px;width:76px;height:18px;background:#151515}
-#scene{position:absolute;left:90px;top:150px;width:900px;height:1250px;overflow:hidden}#connectors{position:absolute;inset:0;width:900px;height:1250px}.connector{stroke:#151515;stroke-width:7;stroke-linecap:round}.packet{fill:#2878d0}
-.object{position:absolute;border:5px solid #151515;border-radius:20px;background:#fff;display:flex;align-items:center;justify-content:center;text-align:center;padding:18px;font-size:38px;line-height:1.12;font-weight:700;opacity:0;overflow:hidden;transform-origin:center}
-.object[data-semantic=active]{border-color:#2878d0}.object[data-semantic=success]{border-color:#3f8f62}.object[data-semantic=warning]{border-color:#e7c536}.object[data-semantic=failure]{border-color:#cf4e46}.focused{box-shadow:0 0 0 10px rgba(40,120,208,.16)}.dimmed{opacity:.28!important}.removed{opacity:0!important}
-.kind-label{border:0;background:transparent;justify-content:flex-start;text-align:left;padding:0;font-size:52px}.kind-code-card{align-items:stretch;justify-content:flex-start;flex-direction:column;text-align:left;padding:0;font-family:monospace;font-size:30px}.code-title{padding:14px 18px;background:#151515;color:#fff}.code-body{padding:18px;white-space:pre-wrap}
-.kind-table{padding:0;display:block}.table-title{padding:10px;background:#151515;color:#fff}.table-row{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;border-top:3px solid #151515;font-size:27px}.table-cell{padding:10px;border-right:2px solid #151515}.table-cell:last-child{border:0}.kind-database{border-radius:50% / 12%;padding-top:25px}.kind-file:before{content:"";position:absolute;right:0;top:0;border-left:36px solid transparent;border-bottom:36px solid #e7c536}
-.kind-queue{gap:8px}.queue-dot{width:24px;height:24px;border:4px solid #151515;border-radius:50%}.kind-browser{padding-top:45px}.kind-browser:before{content:"●  ●  ●";position:absolute;left:0;right:0;top:0;height:36px;padding-left:12px;text-align:left;background:#f0f0ed;border-bottom:4px solid #151515;font-size:20px}.kind-lock:before{content:"⌑";font-size:54px;margin-right:12px}.kind-badge{border-radius:999px}.kind-image{padding:0}.kind-image img{width:100%;height:100%;object-fit:contain}.kind-composite svg{width:100%;height:100%}.detail{display:block;font-size:25px;font-weight:500;margin-top:8px}
+#scene{position:absolute;left:90px;top:150px;width:900px;height:1250px;overflow:hidden}#camera{position:absolute;inset:0;width:900px;height:1250px;transform-origin:0 0}#connectors{position:absolute;inset:0;width:900px;height:1250px;overflow:visible}#objects{position:absolute;inset:0}
+.connector{fill:none;stroke:#151515;stroke-width:6;stroke-linecap:round;stroke-linejoin:round}.packet{fill:#2878d0;stroke:#151515;stroke-width:3}
+.object{position:absolute;opacity:0;transform-origin:center;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:#151515;overflow:visible}
+.illustration{width:100%;height:calc(100% - 48px);overflow:visible}.ink{stroke:#151515;stroke-width:3.2;stroke-linecap:round;stroke-linejoin:round}.no-fill{fill:none}.paper-fill{fill:#fff}.semantic-fill{fill:color-mix(in srgb,var(--accent) 16%,white)}.warning-fill{fill:#e7c536}.accent-fill{fill:var(--accent);stroke:#151515;stroke-width:2}.accent-line{fill:none;stroke:var(--accent);stroke-width:4;stroke-linecap:round;stroke-linejoin:round}.organic-outline{stroke:#151515;stroke-width:3.2;stroke-linejoin:round}
+.object-label{font-size:34px;line-height:1.05;font-weight:700;white-space:nowrap}.object-detail{font-size:23px;line-height:1.05;font-weight:500;margin-top:5px}.free-label{font-size:48px;line-height:1.1;text-align:left;width:100%}
+.designed-card{width:100%;height:100%;background:#fff;border:4px solid #151515;border-radius:18px;overflow:hidden;text-align:left;box-shadow:7px 8px 0 color-mix(in srgb,var(--accent) 28%,white)}.card-heading{background:#151515;color:#fff;padding:10px 16px;font-size:28px}.table-row{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;border-top:3px solid #151515;font-size:24px}.table-row span{padding:9px;border-right:2px solid #151515}.table-row span:last-child{border:0}.code-card{font-family:monospace}.code-lines{padding:12px}.code-line{font-size:21px;line-height:1.35;padding:2px 6px;border-radius:5px}.code-line>span{display:inline-block;width:30px;color:#777;margin-right:8px}.code-line.highlighted{background:color-mix(in srgb,var(--accent) 22%,white)}
+.image-frame{width:100%;height:calc(100% - 45px);border:4px solid #151515;border-radius:18px;overflow:hidden;background:#fff}.image-frame img{width:100%;height:calc(100% - 30px);object-fit:contain}.browser-dots{height:30px;padding:3px 10px;text-align:left;background:#f1f1ed;border-bottom:3px solid #151515;font-size:15px}
+.focused .illustration{filter:drop-shadow(0 0 7px color-mix(in srgb,var(--accent) 38%,transparent))}.focused .object-label{color:var(--accent)}
 #captions{position:absolute;left:110px;top:1500px;width:860px;min-height:170px;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:12px;padding:14px 22px;font-size:54px;line-height:1.22;font-weight:700;text-align:center;color:#151515}#captions span.active{color:#2878d0}
 `;
-
-interface ResolvedTransition extends VisualTransition {
-  at: number;
-  end: number;
-}
-function tokens(text: string) {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-}
-export function resolveTransitions(
-  plan: VisualPlan,
-  track: CaptionTrack,
-): ResolvedTransition[] {
-  const resolved: ResolvedTransition[] = [];
-  for (const visualBeat of plan.beats) {
-    const beat = track.beats.find((item) => item.id === visualBeat.beatId);
-    if (!beat) throw new Error(`Missing timed beat ${visualBeat.beatId}`);
-    const words = track.words.filter(
-      (word) => word.start >= beat.start && word.start < beat.end,
-    );
-    const normalized = words.map((word) => tokens(word.text)[0] ?? "");
-    for (const transition of visualBeat.transitions) {
-      const anchor = tokens(transition.anchor);
-      let found = -1;
-      for (let start = 0; start <= normalized.length - anchor.length; start++)
-        if (
-          anchor.every((word, offset) => normalized[start + offset] === word)
-        ) {
-          found = start;
-          break;
-        }
-      const first = words[found];
-      const last = words[found + anchor.length - 1];
-      if (found < 0 || !first || !last)
-        throw new Error(
-          `Could not align visual anchor ${JSON.stringify(transition.anchor)} in ${beat.id}`,
-        );
-      resolved.push({
-        ...transition,
-        at: first.start,
-        end: Math.min(beat.end, Math.max(last.end, first.start + 0.55)),
-      });
-    }
-  }
-  return resolved.sort((a, b) => a.at - b.at);
-}
 
 interface PositionedObject {
   id: string;
@@ -122,6 +72,16 @@ export function objectGeometryErrors(
   return errors;
 }
 
+async function imageData(assets: ValidatedAsset[]) {
+  return Object.fromEntries(
+    await Promise.all(
+      assets.map(async (asset) => [
+        asset.id,
+        `data:${asset.path.endsWith(".png") ? "image/png" : "image/jpeg"};base64,${(await readFile(asset.path)).toString("base64")}`,
+      ]),
+    ),
+  );
+}
 async function setupPage(
   page: Page,
   config: Pick<Config, "root">,
@@ -131,227 +91,146 @@ async function setupPage(
   const font = await readFile(
     resolve(config.root, "fonts/BalsamiqSans-Bold.ttf"),
   );
+  const images = await imageData(assets);
+  const objects = plan.world
+    .map((object) => renderObject(object, plan.proposedPrimitives, images))
+    .join("");
   await page.setContent(
-    `<style>${css.replace("__FONT__", font.toString("base64"))}</style><div id="yellow"></div><div id="black"></div><div id="scene"><svg id="connectors"></svg><div id="objects"></div></div><div id="captions"></div>`,
+    `<style>${css.replace("__FONT__", font.toString("base64"))}</style><div id="yellow"></div><div id="black"></div><div id="scene"><div id="camera"><svg id="connectors"></svg><div id="objects">${objects}</div></div></div><div id="captions"></div>`,
   );
-  const images = Object.fromEntries(
-    await Promise.all(
-      assets.map(async (asset) => [
-        asset.id,
-        `data:${asset.path.endsWith(".png") ? "image/png" : "image/jpeg"};base64,${(await readFile(asset.path)).toString("base64")}`,
-      ]),
-    ),
-  );
-  await page.evaluate(
-    ({ plan, palette, images }) => {
-      const root = document.getElementById("objects");
-      if (!root) throw new Error("Missing object root");
-      for (const object of plan.objects) {
-        const element = document.createElement("div");
-        element.className = `object kind-${object.kind}`;
-        element.dataset.objectId = object.id;
-        element.dataset.semantic = object.semantic;
-        Object.assign(element.style, {
-          left: `${object.box.x}px`,
-          top: `${object.box.y}px`,
-          width: `${object.box.width}px`,
-          height: `${object.box.height}px`,
-        });
-        if (object.kind === "code-card") {
-          const title = document.createElement("div");
-          title.className = "code-title";
-          title.textContent = object.label;
-          const body = document.createElement("div");
-          body.className = "code-body";
-          body.textContent = object.detail ?? "";
-          element.append(title, body);
-        } else if (object.kind === "table") {
-          const title = document.createElement("div");
-          title.className = "table-title";
-          title.textContent = object.label;
-          element.append(title);
-          for (const cells of object.rows ?? []) {
-            const row = document.createElement("div");
-            row.className = "table-row";
-            for (const value of cells) {
-              const cell = document.createElement("div");
-              cell.className = "table-cell";
-              cell.textContent = value;
-              row.append(cell);
-            }
-            element.append(row);
-          }
-        } else if (object.kind === "queue") {
-          for (let index = 0; index < 4; index++) {
-            const dot = document.createElement("span");
-            dot.className = "queue-dot";
-            element.append(dot);
-          }
-        } else if (object.kind === "image") {
-          const source = object.assetId ? images[object.assetId] : undefined;
-          if (!source)
-            throw new Error(`Validated image missing for ${object.id}`);
-          const image = document.createElement("img");
-          image.src = source;
-          image.alt = object.label;
-          element.append(image);
-        } else if (object.kind === "composite") {
-          const spec = plan.proposedPrimitives.find(
-            (item) => item.id === object.primitiveId,
-          );
-          if (!spec) throw new Error(`Primitive missing for ${object.id}`);
-          const svg = document.createElementNS(
-            "http://www.w3.org/2000/svg",
-            "svg",
-          );
-          svg.setAttribute("viewBox", "0 0 100 100");
-          for (const shape of spec.shapes) {
-            const tag = shape.kind === "text" ? "text" : shape.kind;
-            const node = document.createElementNS(
-              "http://www.w3.org/2000/svg",
-              tag,
-            );
-            node.setAttribute("x", String(shape.x));
-            node.setAttribute("y", String(shape.y));
-            node.setAttribute("stroke", palette[shape.semantic]);
-            node.setAttribute(
-              "fill",
-              shape.kind === "text" ? palette[shape.semantic] : "none",
-            );
-            node.setAttribute("stroke-width", "3");
-            if (shape.width !== undefined)
-              node.setAttribute("width", String(shape.width));
-            if (shape.height !== undefined)
-              node.setAttribute("height", String(shape.height));
-            if (shape.kind === "circle")
-              node.setAttribute("r", String((shape.width ?? 10) / 2));
-            if (shape.kind === "line") {
-              node.setAttribute("x2", String(shape.x + (shape.width ?? 10)));
-              node.setAttribute("y2", String(shape.y + (shape.height ?? 0)));
-            }
-            if (shape.kind === "path") node.setAttribute("d", shape.text ?? "");
-            if (shape.kind === "text") {
-              node.textContent = shape.text ?? "";
-              node.setAttribute("font-size", "10");
-            }
-            svg.append(node);
-          }
-          element.append(svg);
-        } else {
-          const label = document.createElement("span");
-          label.textContent = object.label;
-          element.append(label);
-          if (object.detail) {
-            const detail = document.createElement("span");
-            detail.className = "detail";
-            detail.textContent = object.detail;
-            element.append(detail);
-          }
-        }
-        root.append(element);
-      }
-    },
-    { plan, palette, images },
+  await page.waitForFunction(() =>
+    [...document.images].every((image) => image.complete),
   );
 }
 
 async function setFrame(
   page: Page,
-  plan: VisualPlan,
-  transitions: ResolvedTransition[],
-  time: number,
+  state: FrameState,
   words: CaptionTrack["words"],
+  time: number,
 ) {
   await page.evaluate(
-    ({ plan, transitions, time, words }) => {
+    ({ state, words, time }) => {
+      const camera = document.getElementById("camera");
+      if (!camera) throw new Error("Missing camera root");
+      camera.style.transform = `translate(${state.camera.x}px,${state.camera.y}px) scale(${state.camera.scale})`;
       const nodes = new Map(
         [...document.querySelectorAll<HTMLElement>("[data-object-id]")].map(
           (node) => [node.dataset.objectId ?? "", node],
         ),
       );
-      for (const node of nodes.values()) {
-        node.style.opacity = "0";
-        node.style.transform = "scale(.94)";
-        node.classList.remove("focused", "dimmed", "removed");
+      for (const object of state.objects) {
+        const node = nodes.get(object.id);
+        if (!node) continue;
+        const settle =
+          object.internal?.action === "settle"
+            ? Math.sin(object.internal.progress * Math.PI) * 0.018
+            : 0;
+        Object.assign(node.style, {
+          left: `${object.box.x}px`,
+          top: `${object.box.y}px`,
+          width: `${object.box.width}px`,
+          height: `${object.box.height}px`,
+          opacity: object.visible ? String(object.opacity) : "0",
+          transform: `translateY(${(1 - object.opacity) * 18}px) scale(${object.scale + settle})`,
+        });
+        node.dataset.focus = String(object.focus);
+        node.dataset.semantic = object.semantic;
+        node.style.setProperty("--accent", object.accent);
+        node.classList.toggle("focused", object.focus > 0.35);
+        const detail = node.querySelector<HTMLElement>(".object-detail");
+        if (detail && object.detail !== undefined)
+          detail.textContent = object.detail;
+        for (const dot of node.querySelectorAll<SVGElement>(".queue-dot"))
+          dot.style.transform = "translateX(0px)";
+        const databaseRow = node.querySelector<SVGElement>(".database-row");
+        if (databaseRow) databaseRow.style.opacity = "1";
+        const shackle = node.querySelector<SVGElement>(".lock-shackle");
+        if (shackle) shackle.style.transform = "translateY(0px)";
+        for (const line of node.querySelectorAll<HTMLElement>(".code-line"))
+          line.classList.remove("highlighted");
+        const internal = object.internal;
+        if (internal?.action === "queue-advance")
+          for (const dot of node.querySelectorAll<SVGElement>(".queue-dot"))
+            dot.style.transform = `translateX(${internal.progress * 12}px)`;
+        if (internal?.action === "row-insert" && databaseRow) {
+          databaseRow.style.opacity = String(internal.progress);
+          databaseRow.style.transform = `translateY(${(1 - internal.progress) * 8}px)`;
+        }
+        if (
+          internal &&
+          ["lock", "unlock"].includes(internal.action) &&
+          shackle
+        ) {
+          const direction =
+            internal.action === "unlock" ? 1 : 1 - internal.progress;
+          shackle.style.transform = `translateY(${-direction * 8}px)`;
+        }
+        if (internal?.action === "highlight-code") {
+          const requested = Number(internal.value);
+          const lines = [...node.querySelectorAll<HTMLElement>(".code-line")];
+          const selected = Number.isInteger(requested)
+            ? lines[Math.max(0, requested - 1)]
+            : lines[
+                Math.floor(internal.progress * Math.max(0, lines.length - 1))
+              ];
+          selected?.classList.add("highlighted");
+        }
       }
       const svg = document.getElementById("connectors");
       svg?.replaceChildren();
-      const visible = new Set<string>();
-      for (const transition of transitions) {
-        if (time < transition.at) continue;
-        const progress = Math.max(
-          0,
-          Math.min(
-            1,
-            (time - transition.at) / (transition.end - transition.at),
-          ),
+      const byId = new Map(state.objects.map((object) => [object.id, object]));
+      for (const connector of state.connectors) {
+        const from = byId.get(connector.from);
+        const to = byId.get(connector.to);
+        if (!from || !to || !svg) continue;
+        const x1 = from.box.x + from.box.width / 2;
+        const y1 = from.box.y + from.box.height / 2;
+        const x2 = to.box.x + to.box.width / 2;
+        const y2 = to.box.y + to.box.height / 2;
+        const bend = Math.max(45, Math.abs(x2 - x1) * 0.34);
+        const control1X =
+          connector.control1?.x ?? x1 + (x2 >= x1 ? bend : -bend);
+        const control1Y = connector.control1?.y ?? y1;
+        const control2X =
+          connector.control2?.x ?? x2 - (x2 >= x1 ? bend : -bend);
+        const control2Y = connector.control2?.y ?? y2;
+        const path = document.createElementNS(
+          "http://www.w3.org/2000/svg",
+          "path",
         );
-        if (transition.operation === "remove")
-          transition.objectIds.forEach((id) => visible.delete(id));
-        else if (transition.operation !== "dim")
-          transition.objectIds.forEach((id) => visible.add(id));
-        for (const id of transition.objectIds) {
-          const node = nodes.get(id);
-          if (!node) continue;
-          if (["focus", "compare"].includes(transition.operation))
-            node.classList.add("focused");
-          if (transition.operation === "dim") node.classList.add("dimmed");
-          if (transition.operation === "remove" && progress >= 1)
-            node.classList.add("removed");
-          if (transition.operation === "mutate" && transition.value) {
-            const detail = node.querySelector<HTMLElement>(".detail");
-            if (detail) detail.textContent = transition.value;
-          }
-        }
-        if (
-          ["draw", "transfer"].includes(transition.operation) &&
-          transition.objectIds.length >= 2 &&
-          svg
-        ) {
-          const from = plan.objects.find(
-            (item) => item.id === transition.objectIds[0],
+        path.setAttribute("class", "connector");
+        path.setAttribute(
+          "d",
+          `M ${x1} ${y1} C ${control1X} ${control1Y}, ${control2X} ${control2Y}, ${x2} ${y2}`,
+        );
+        path.setAttribute("pathLength", "1");
+        path.setAttribute("stroke-dasharray", "1");
+        path.setAttribute("stroke-dashoffset", String(1 - connector.progress));
+        svg.append(path);
+        if (connector.packetProgress !== undefined) {
+          const p = connector.packetProgress;
+          const inverse = 1 - p;
+          const packetX =
+            inverse ** 3 * x1 +
+            3 * inverse ** 2 * p * control1X +
+            3 * inverse * p ** 2 * control2X +
+            p ** 3 * x2;
+          const packetY =
+            inverse ** 3 * y1 +
+            3 * inverse ** 2 * p * control1Y +
+            3 * inverse * p ** 2 * control2Y +
+            p ** 3 * y2;
+          const packet = document.createElementNS(
+            "http://www.w3.org/2000/svg",
+            "circle",
           );
-          const to = plan.objects.find(
-            (item) => item.id === transition.objectIds[1],
-          );
-          if (from && to) {
-            const x1 = from.box.x + from.box.width / 2;
-            const y1 = from.box.y + from.box.height / 2;
-            const x2 = to.box.x + to.box.width / 2;
-            const y2 = to.box.y + to.box.height / 2;
-            const line = document.createElementNS(
-              "http://www.w3.org/2000/svg",
-              "line",
-            );
-            line.setAttribute("class", "connector");
-            line.setAttribute("x1", String(x1));
-            line.setAttribute("y1", String(y1));
-            line.setAttribute("x2", String(x1 + (x2 - x1) * progress));
-            line.setAttribute("y2", String(y1 + (y2 - y1) * progress));
-            svg.append(line);
-            if (transition.operation === "transfer") {
-              const packet = document.createElementNS(
-                "http://www.w3.org/2000/svg",
-                "circle",
-              );
-              packet.setAttribute("class", "packet");
-              packet.setAttribute("r", "13");
-              packet.setAttribute("cx", String(x1 + (x2 - x1) * progress));
-              packet.setAttribute("cy", String(y1 + (y2 - y1) * progress));
-              svg.append(packet);
-            }
-          }
+          packet.setAttribute("class", "packet");
+          packet.setAttribute("r", "12");
+          packet.setAttribute("cx", String(packetX));
+          packet.setAttribute("cy", String(packetY));
+          svg.append(packet);
         }
-      }
-      for (const id of visible) {
-        const node = nodes.get(id);
-        if (!node) continue;
-        const first = transitions.find((item) => item.objectIds.includes(id));
-        const progress = first
-          ? Math.max(0, Math.min(1, (time - first.at) / (first.end - first.at)))
-          : 1;
-        node.style.opacity = String(progress);
-        node.style.transform = `scale(${0.94 + progress * 0.06})`;
       }
       const captions = document.getElementById("captions");
       if (!captions) throw new Error("Missing captions");
@@ -359,24 +238,16 @@ async function setFrame(
         ...words.map((word) => {
           const span = document.createElement("span");
           span.textContent = word.text;
-          if (word.active) span.className = "active";
+          if (word.start <= time && word.end > time) span.className = "active";
           return span;
         }),
       );
     },
-    {
-      plan,
-      transitions,
-      time,
-      words: words.map((word) => ({
-        text: word.text,
-        active: word.start <= time && word.end > time,
-      })),
-    },
+    { state, words, time },
   );
 }
 
-async function inspectFrame(page: Page, expected: VisualObject[]) {
+async function inspectFrame(page: Page, expected: FrameState) {
   const result = await page.evaluate(() => {
     const scene = document.getElementById("scene");
     if (!scene) return { errors: ["Missing scene"], actual: [] };
@@ -391,13 +262,14 @@ async function inspectFrame(page: Page, expected: VisualObject[]) {
     for (const element of visible) {
       const box = element.getBoundingClientRect();
       if (
-        box.left < area.left - 2 ||
-        box.top < area.top - 2 ||
-        box.right > area.right + 2 ||
-        box.bottom > area.bottom + 2
+        Number(element.dataset.focus ?? 0) > 0.35 &&
+        (box.left < area.left - 2 ||
+          box.top < area.top - 2 ||
+          box.right > area.right + 2 ||
+          box.bottom > area.bottom + 2)
       )
         errors.push(
-          `Object ${element.dataset.objectId ?? "unknown"} leaves safe area`,
+          `Focused object ${element.dataset.objectId ?? "unknown"} leaves the camera frame`,
         );
       if (
         element.scrollWidth > element.clientWidth + 2 ||
@@ -414,23 +286,29 @@ async function inspectFrame(page: Page, expected: VisualObject[]) {
         captions.scrollHeight > captions.clientHeight)
     )
       errors.push("Caption text overflows safe area");
-    const actual = all.map((element) => ({
-      id: element.dataset.objectId ?? "",
-      x: element.offsetLeft,
-      y: element.offsetTop,
-      width: element.offsetWidth,
-      height: element.offsetHeight,
-    }));
-    return { errors, actual };
+    return {
+      errors,
+      actual: all.map((element) => ({
+        id: element.dataset.objectId ?? "",
+        x: element.offsetLeft,
+        y: element.offsetTop,
+        width: element.offsetWidth,
+        height: element.offsetHeight,
+      })),
+    };
   });
-  result.errors.push(...objectGeometryErrors(expected, result.actual));
-  const screenshot = await page.screenshot({ type: "png" });
+  const dynamicExpected = expected.objects.map((object) => ({
+    id: object.id,
+    box: object.box,
+  }));
+  result.errors.push(...objectGeometryErrors(dynamicExpected, result.actual));
+  const screenshot = await page.locator("#scene").screenshot({ type: "png" });
   const stats = await sharp(screenshot).stats();
-  if (stats.channels.every((channel) => channel.stdev < 3))
-    result.errors.push("Blank or uniform frame");
+  if (stats.channels.every((channel) => channel.stdev < 0.5))
+    result.errors.push("Blank or uniform diagram frame");
   if (result.errors.length)
     throw new Error([...new Set(result.errors)].join("; "));
-  return sharp(screenshot).resize(180, 320).removeAlpha().raw().toBuffer();
+  return sharp(screenshot).resize(180, 250).removeAlpha().raw().toBuffer();
 }
 
 export interface RenderOptions {
@@ -448,7 +326,7 @@ export async function renderVideo(
   options: RenderOptions,
 ): Promise<RenderedVideo> {
   const { signal, config } = options;
-  const transitions = resolveTransitions(visualPlan, track);
+  const compiled = compileTimeline(visualPlan, track);
   const phrases = captionPhrases(track.words);
   const configuredBrowser = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
   const systemBrowser = existsSync("/usr/bin/google-chrome")
@@ -471,9 +349,13 @@ export async function renderVideo(
     await setupPage(page, config, visualPlan, options.assets ?? []);
     const sampleTimes = [
       0.05,
-      ...transitions.flatMap((item) => [item.at, item.end]),
+      ...compiled.actions.flatMap((item) => [
+        Math.min(item.end, item.at + 0.12),
+        item.end,
+      ]),
+      ...compiled.camera.flatMap((item) => [item.at, item.end]),
       ...track.beats.flatMap((beat) => [
-        beat.start,
+        Math.min(beat.end, beat.start + 0.12),
         (beat.start + beat.end) / 2,
       ]),
       Math.max(0, narration.duration - 0.05),
@@ -484,14 +366,9 @@ export async function renderVideo(
     let previous: Buffer | undefined;
     let changed = 0;
     for (const time of sampleTimes) {
-      await setFrame(
-        page,
-        visualPlan,
-        transitions,
-        time,
-        captionAt(phrases, time),
-      );
-      const sample = await inspectFrame(page, visualPlan.objects);
+      const state = evaluateTimelineAt(visualPlan, compiled, time);
+      await setFrame(page, state, captionAt(phrases, time), time);
+      const sample = await inspectFrame(page, state);
       if (previous) {
         let difference = 0;
         for (let index = 0; index < sample.length; index++)
@@ -502,8 +379,9 @@ export async function renderVideo(
     }
     if (changed < Math.max(1, track.beats.length - 1))
       throw new Error(
-        "Visual plan does not create enough measurable explanation changes",
+        "Continuous visual story does not create enough diagram changes",
       );
+
     const silent = workspace.file("visuals.mp4");
     const output = workspace.file("final.mp4");
     const encoder = spawn(
@@ -556,10 +434,9 @@ export async function renderVideo(
         const time = index / 60;
         await setFrame(
           page,
-          visualPlan,
-          transitions,
-          time,
+          evaluateTimelineAt(visualPlan, compiled, time),
           captionAt(phrases, time),
+          time,
         );
         const buffer = await page.screenshot({ type: "png" });
         if (!encoder.stdin.write(buffer))
@@ -581,8 +458,18 @@ export async function renderVideo(
     } finally {
       signal.removeEventListener("abort", stop);
     }
-    const cueTimes = transitions
-      .filter((item) => ["transfer", "mutate"].includes(item.operation))
+
+    const cueTimes = compiled.actions
+      .filter((item) =>
+        [
+          "transfer",
+          "mutate",
+          "row-insert",
+          "lock",
+          "fail",
+          "succeed",
+        ].includes(item.action),
+      )
       .map((item) => item.at)
       .filter(
         (time, index, times) =>

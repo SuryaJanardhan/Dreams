@@ -58,6 +58,8 @@
     "build:automation": "tsc",
     "syntax": "node --import tsx scripts/check-syntax.ts",
     "smoke": "node --import tsx scripts/smoke.ts",
+    "preview:continuous": "node --import tsx bin/preview_continuous_visual.ts",
+    "test:continuous": "node --import tsx --test tests/visual-planning.test.ts tests/rendering.test.ts",
     "check:migration": "node --import tsx scripts/check-migration.ts"
   }
 }

@@ -83,8 +83,8 @@ for (const topic of ["API", "Load Balancer", "Cache"])
       const result = await renderVideo(
         plan,
         {
-          version: 1,
-          objects: [
+          version: 2,
+          world: [
             {
               id: "concept",
               kind: "api",
@@ -93,19 +93,17 @@ for (const topic of ["API", "Load Balancer", "Cache"])
               box: { x: 200, y: 300, width: 500, height: 240 },
             },
           ],
-          beats: [
+          timeline: [
             {
+              id: "introduce-concept",
               beatId: "explain",
+              action: "create",
               objectIds: ["concept"],
-              transitions: [
-                {
-                  operation: "create",
-                  objectIds: ["concept"],
-                  anchor: parts[0]!,
-                },
-              ],
+              anchor: parts[0]!,
+              motion: "soft-enter",
             },
           ],
+          camera: [],
           assetIntents: [],
           proposedPrimitives: [],
         },

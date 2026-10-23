@@ -1,10 +1,12 @@
 import { z } from "zod";
 import type {
   ContentPlan,
+  MotionPreset,
   PrimitiveKind,
   PrimitiveSpec,
   SemanticColor,
   Task,
+  VisualBox,
   VisualPlan,
 } from "../domain.js";
 import type { Config } from "../operations/config.js";
@@ -26,6 +28,19 @@ const primitiveKinds = [
   "file",
   "queue",
   "service",
+  "server",
+  "server-cluster",
+  "cache",
+  "load-balancer",
+  "cloud",
+  "token",
+  "repository",
+  "pipeline",
+  "container",
+  "virtual-machine",
+  "terminal",
+  "phone",
+  "decision",
   "client",
   "browser",
   "api",
@@ -47,14 +62,44 @@ const operations = [
   "dim",
   "remove",
   "settle",
+  "reflow",
+  "row-insert",
+  "queue-advance",
+  "lock",
+  "unlock",
+  "fail",
+  "succeed",
+  "highlight-code",
+  "expire",
+  "branch",
 ] as const;
-const boxSchema = z
+const motionPresets = [
+  "soft-enter",
+  "draw-path",
+  "travel-path",
+  "state-change",
+  "internal-action",
+  "rearrange",
+  "focus",
+  "settle",
+  "soft-exit",
+] as const satisfies readonly MotionPreset[];
+const cameraActions = [
+  "frame",
+  "pan",
+  "push-in",
+  "pull-out",
+  "follow",
+  "return-wide",
+] as const;
+const boxSchema: z.ZodType<VisualBox> = z
   .object({
     x: z.number().int().min(0).max(820),
     y: z.number().int().min(0).max(1170),
     width: z.number().int().min(80).max(760),
     height: z.number().int().min(60).max(560),
   })
+  .strict()
   .refine((box) => box.x + box.width <= 900, "Object exceeds scene width")
   .refine(
     (box) => box.y + box.height <= 1250,
@@ -73,7 +118,7 @@ const primitiveSpecSchema: z.ZodType<PrimitiveSpec> = z
             y: z.number().min(0).max(100),
             width: z.number().min(0).max(100).optional(),
             height: z.number().min(0).max(100).optional(),
-            text: z.string().max(40).optional(),
+            text: z.string().max(120).optional(),
             semantic: z.enum(semanticColors),
           })
           .strict(),
@@ -82,9 +127,7 @@ const primitiveSpecSchema: z.ZodType<PrimitiveSpec> = z
       .max(24),
   })
   .strict();
-export function parsePrimitiveSpec(value: unknown) {
-  return validatePrimitiveSpec(primitiveSpecSchema.parse(value));
-}
+
 function validatePrimitiveSpec(spec: PrimitiveSpec) {
   for (const [index, shape] of spec.shapes.entries()) {
     if (
@@ -97,10 +140,14 @@ function validatePrimitiveSpec(spec: PrimitiveSpec) {
   }
   return spec;
 }
+export function parsePrimitiveSpec(value: unknown) {
+  return validatePrimitiveSpec(primitiveSpecSchema.parse(value));
+}
+
 export const visualPlanSchema: z.ZodType<VisualPlan> = z
   .object({
-    version: z.literal(1),
-    objects: z
+    version: z.literal(2),
+    world: z
       .array(
         z
           .object({
@@ -127,29 +174,47 @@ export const visualPlanSchema: z.ZodType<VisualPlan> = z
       )
       .min(2)
       .max(18),
-    beats: z
+    timeline: z
       .array(
         z
           .object({
+            id: z.string().regex(/^[a-z][a-z0-9-]{1,60}$/),
             beatId: z.string().regex(/^[a-zA-Z0-9-]+$/),
+            action: z.enum(operations),
             objectIds: z.array(z.string()).min(1).max(7),
-            transitions: z
+            anchor: z.string().min(1).max(60),
+            value: z.string().max(120).optional(),
+            motion: z.enum(motionPresets),
+            layout: z
               .array(
                 z
                   .object({
-                    operation: z.enum(operations),
-                    objectIds: z.array(z.string()).min(1).max(4),
-                    anchor: z.string().min(1).max(60),
-                    value: z.string().max(120).optional(),
+                    objectId: z.string(),
+                    box: boxSchema,
                   })
                   .strict(),
               )
               .min(1)
-              .max(12),
+              .max(7)
+              .optional(),
           })
           .strict(),
       )
       .min(3)
+      .max(48),
+    camera: z
+      .array(
+        z
+          .object({
+            id: z.string().regex(/^[a-z][a-z0-9-]{1,60}$/),
+            beatId: z.string().regex(/^[a-zA-Z0-9-]+$/),
+            action: z.enum(cameraActions),
+            objectIds: z.array(z.string()).min(1).max(7),
+            anchor: z.string().min(1).max(60),
+            zoom: z.number().min(1).max(1.15),
+          })
+          .strict(),
+      )
       .max(8),
     assetIntents: z
       .array(
@@ -168,10 +233,7 @@ export const visualPlanSchema: z.ZodType<VisualPlan> = z
   })
   .strict();
 
-function overlapRatio(
-  first: VisualPlan["objects"][number]["box"],
-  second: VisualPlan["objects"][number]["box"],
-) {
+function overlapRatio(first: VisualBox, second: VisualBox) {
   const width = Math.max(
     0,
     Math.min(first.x + first.width, second.x + second.width) -
@@ -182,11 +244,26 @@ function overlapRatio(
     Math.min(first.y + first.height, second.y + second.height) -
       Math.max(first.y, second.y),
   );
-  const intersection = width * height;
   return (
-    intersection /
+    (width * height) /
     Math.min(first.width * first.height, second.width * second.height)
   );
+}
+function words(text: string) {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+}
+function anchorStart(text: string, anchor: string) {
+  const source = words(text);
+  const target = words(anchor);
+  for (let index = 0; index <= source.length - target.length; index++)
+    if (target.every((word, offset) => source[index + offset] === word))
+      return index;
+  return -1;
 }
 
 export function validateVisualPlan(plan: VisualPlan, content: ContentPlan) {
@@ -197,18 +274,15 @@ export function validateVisualPlan(plan: VisualPlan, content: ContentPlan) {
     } catch (error) {
       errors.push(error instanceof Error ? error.message : String(error));
     }
-  const objects = new Map(plan.objects.map((object) => [object.id, object]));
-  if (objects.size !== plan.objects.length)
+  const objects = new Map(plan.world.map((object) => [object.id, object]));
+  if (objects.size !== plan.world.length)
     errors.push("Object IDs must be unique");
-  const expectedBeats = content.beats.map((beat) => beat.id);
-  if (
-    expectedBeats.length !== plan.beats.length ||
-    expectedBeats.some((id, index) => plan.beats[index]?.beatId !== id)
-  )
-    errors.push("Visual beats must match content beats in order");
+  const actionIds = new Set(plan.timeline.map((action) => action.id));
+  if (actionIds.size !== plan.timeline.length)
+    errors.push("Timeline action IDs must be unique");
   const intents = new Set(plan.assetIntents.map((intent) => intent.id));
   const primitives = new Set(plan.proposedPrimitives.map((item) => item.id));
-  for (const object of plan.objects) {
+  for (const object of plan.world) {
     if (
       object.kind === "image" &&
       (!object.assetId || !intents.has(object.assetId))
@@ -220,36 +294,114 @@ export function validateVisualPlan(plan: VisualPlan, content: ContentPlan) {
     )
       errors.push(`Composite ${object.id} has no proposed primitive`);
   }
-  for (const beat of plan.beats) {
-    const story = content.beats.find((item) => item.id === beat.beatId);
-    if (!story) continue;
-    for (const id of beat.objectIds)
-      if (!objects.has(id))
-        errors.push(`Beat ${beat.beatId} references unknown ${id}`);
-    for (const transition of beat.transitions) {
-      for (const id of transition.objectIds)
-        if (!beat.objectIds.includes(id))
-          errors.push(`Transition references inactive object ${id}`);
-      if (!story.text.toLowerCase().includes(transition.anchor.toLowerCase()))
+  const beatOrder = new Map(
+    content.beats.map((beat, index) => [beat.id, index] as const),
+  );
+  const seenBeats = new Set<string>();
+  const firstAction = new Set<string>();
+  const visible = new Set<string>();
+  const boxes = new Map(plan.world.map((object) => [object.id, object.box]));
+  let previousBeat = -1;
+  const introducing = new Set(["create", "reveal", "draw"]);
+  for (const action of plan.timeline) {
+    const order = beatOrder.get(action.beatId);
+    const beat = content.beats.find((item) => item.id === action.beatId);
+    if (order === undefined || !beat) {
+      errors.push(`Unknown content beat ${action.beatId}`);
+      continue;
+    }
+    if (order < previousBeat)
+      errors.push("Timeline actions must follow content beat order");
+    previousBeat = Math.max(previousBeat, order);
+    seenBeats.add(action.beatId);
+    const start = anchorStart(beat.text, action.anchor);
+    if (start < 0)
+      errors.push(
+        `Anchor ${JSON.stringify(action.anchor)} is absent from beat ${action.beatId}`,
+      );
+    if (!firstAction.has(action.beatId)) {
+      firstAction.add(action.beatId);
+      if (start > 5)
         errors.push(
-          `Anchor ${JSON.stringify(transition.anchor)} is absent from beat ${beat.beatId}`,
+          `Beat ${action.beatId} begins too long before its first motion`,
         );
     }
-    const active = beat.objectIds.flatMap((id) => {
-      const object = objects.get(id);
-      return object ? [object] : [];
+    for (const id of action.objectIds) {
+      if (!objects.has(id))
+        errors.push(`Timeline references unknown object ${id}`);
+      else if (!visible.has(id) && !introducing.has(action.action))
+        errors.push(`Action ${action.id} uses ${id} before it is introduced`);
+    }
+    if (action.action === "transfer" && action.objectIds.length < 2)
+      errors.push(`Transfer ${action.id} requires source and destination`);
+    if (action.action === "reflow" && !action.layout)
+      errors.push(`Reflow ${action.id} requires a destination layout`);
+    for (const placement of action.layout ?? []) {
+      if (!action.objectIds.includes(placement.objectId))
+        errors.push(`Reflow ${action.id} moves an undeclared object`);
+      boxes.set(placement.objectId, placement.box);
+    }
+    if (introducing.has(action.action))
+      action.objectIds.forEach((id) => visible.add(id));
+    if (action.action === "remove")
+      action.objectIds.forEach((id) => visible.delete(id));
+    if (visible.size > 7)
+      errors.push(`Action ${action.id} leaves more than seven objects visible`);
+    const active = [...visible].flatMap((id) => {
+      const box = boxes.get(id);
+      return box ? [{ id, box }] : [];
     });
     for (let first = 0; first < active.length; first++)
       for (let second = first + 1; second < active.length; second++) {
         const a = active[first];
         const b = active[second];
         if (a && b && overlapRatio(a.box, b.box) > 0.12)
-          errors.push(
-            `Objects ${a.id} and ${b.id} overlap in beat ${beat.beatId}`,
-          );
+          errors.push(`Visible objects ${a.id} and ${b.id} overlap`);
       }
   }
-  if (errors.length) throw new Error(errors.slice(0, 8).join("; "));
+  for (const beat of content.beats)
+    if (!seenBeats.has(beat.id))
+      errors.push(`Content beat ${beat.id} has no visual action`);
+  for (const camera of plan.camera) {
+    const beat = content.beats.find((item) => item.id === camera.beatId);
+    if (!beat)
+      errors.push(`Camera action references unknown beat ${camera.beatId}`);
+    else if (anchorStart(beat.text, camera.anchor) < 0)
+      errors.push(`Camera anchor ${JSON.stringify(camera.anchor)} is absent`);
+    const cameraBeatOrder = beatOrder.get(camera.beatId) ?? -1;
+    const cameraAnchor = beat ? anchorStart(beat.text, camera.anchor) : -1;
+    for (const id of camera.objectIds) {
+      if (!objects.has(id)) {
+        errors.push(`Camera references unknown object ${id}`);
+        continue;
+      }
+      let available = false;
+      for (const action of plan.timeline) {
+        const actionOrder =
+          beatOrder.get(action.beatId) ?? Number.MAX_SAFE_INTEGER;
+        const actionBeat = content.beats.find(
+          (item) => item.id === action.beatId,
+        );
+        const actionAnchor = actionBeat
+          ? anchorStart(actionBeat.text, action.anchor)
+          : Number.MAX_SAFE_INTEGER;
+        if (
+          actionOrder > cameraBeatOrder ||
+          (actionOrder === cameraBeatOrder && actionAnchor > cameraAnchor)
+        )
+          break;
+        if (action.objectIds.includes(id) && introducing.has(action.action))
+          available = true;
+        if (action.objectIds.includes(id) && action.action === "remove")
+          available = false;
+      }
+      if (!available)
+        errors.push(
+          `Camera action ${camera.id} frames ${id} before it is visible`,
+        );
+    }
+  }
+  if (errors.length) throw new Error(errors.slice(0, 12).join("; "));
   return plan;
 }
 
@@ -263,10 +415,11 @@ export function createVisualPlan(config: Config, gemini: Gemini) {
       const result = await gemini.generate(
         config.GEMINI_VISUAL_MODEL,
         config.GEMINI_API_KEY_FOR_VISUALS,
-        `Create a declarative visual plan for this vertical technical reel. Topic: ${JSON.stringify(task.idea)}. Content: ${JSON.stringify(content)}. Trusted reusable composite primitives: ${JSON.stringify(promotedPrimitives)}.
-Output JSON matching {version:1,objects:[{id,kind,label,semantic,box:{x,y,width,height},detail?,rows?,assetId?,primitiveId?}],beats:[{beatId,objectIds,transitions:[{operation,objectIds,anchor,value?}]}],assetIntents:[{id,query,purpose,requiredFeatures,sourcePreference:"official-first"}],proposedPrimitives:[{id,label,shapes:[{kind,x,y,width?,height?,text?,semantic}]}]}.
-Canvas coordinates are 900×1250. Use 2–7 active objects per beat with no overlaps. Object positions stay fixed across beats. Use only kinds ${primitiveKinds.join(", ")} and semantic colors ${semanticColors.join(", ")}. White is the canvas; structure is black, active blue, success green, warning yellow, failure red. Prefer built-in diagrams. Use image only for a real interface or product that materially aids the explanation, with a matching asset intent. Use composite only when no built-in kind can express the concept. Reuse a trusted primitive when suitable and copy its exact spec into proposedPrimitives; otherwise create a matching declarative primitive from normalized 0–100 shapes. Never request a human, avatar, decorative background, logo, watermark, arbitrary color, generated executable code, or more than two assets/primitives.
-Every content beat appears once in order. Every transition anchor must be an exact phrase from that beat's narration. Animate only causal actions using purposeful create, reveal, draw, transfer, mutate, compare, annotate, focus, dim, remove, or settle operations. ${error ? `Repair these validation errors: ${error}` : ""}`,
+        `Create one continuous declarative VisualStory for this vertical technical reel. Topic: ${JSON.stringify(task.idea)}. Content: ${JSON.stringify(content)}. Trusted reusable composite primitives: ${JSON.stringify(promotedPrimitives)}.
+Output JSON {version:2,world:[{id,kind,label,semantic,box:{x,y,width,height},detail?,rows?,assetId?,primitiveId?}],timeline:[{id,beatId,action,objectIds,anchor,value?,motion,layout?:[{objectId,box}]}],camera:[{id,beatId,action,objectIds,anchor,zoom}],assetIntents:[{id,query,purpose,requiredFeatures,sourcePreference:"official-first"}],proposedPrimitives:[{id,label,shapes:[{kind,x,y,width?,height?,text?,semantic}]}]}.
+This is one persistent illustrated world, not separate scenes. Introduce each object once with create, reveal or draw, then preserve its identity until an explicit remove. Never reset the canvas between related beats. Use reflow with destination boxes whenever existing objects must move; nothing may teleport. Use 2–7 visible objects, stable IDs, no overlap and one primary causal motion at a time. Every beat must have at least one action, actions must follow beat order, and the first action must anchor within the first six spoken words.
+Use trusted kinds ${primitiveKinds.join(", ")}, actions ${operations.join(", ")}, motion presets ${motionPresets.join(", ")}, and semantic colors ${semanticColors.join(", ")}. Prefer meaningful internal actions: row-insert for databases/tables, queue-advance, lock/unlock, highlight-code, fail/succeed, expire and branch. Transfers need source and destination. Use subtle camera actions only when framing materially improves clarity; zoom must remain 1–1.15.
+Canvas coordinates are 900×1250. The art direction is polished technical SVG illustration with subtle organic black strokes, white space and restrained semantic fills. Avoid generic bordered cards unless the concept is genuinely a code card, table, browser or real image. Use an image only for a real interface/product and provide a matching official-first asset intent. Use composite only when no trusted kind works. Never request humans, avatars, decorative backgrounds, logos, watermarks, arbitrary colors or executable code. Every action and camera anchor must be an exact phrase from its content beat. ${error ? `Repair these validation errors: ${error}` : ""}`,
         visualPlanSchema,
       );
       return validateVisualPlan(result, content);
@@ -283,14 +436,15 @@ export async function repairVisualPlan(
   const repaired = await gemini.generate(
     config.GEMINI_VISUAL_MODEL,
     config.GEMINI_API_KEY_FOR_VISUALS,
-    `Repair this declarative visual plan after automated frame review. Content: ${JSON.stringify(content)}. Rejected plan: ${JSON.stringify(rejected)}. Review defects: ${JSON.stringify(feedback)}. Return the complete corrected VisualPlan JSON. Preserve valid objects and beat IDs. Change only the objects, layout, transitions, labels, or semantic states required to fix the reported defects. Do not add executable code, humans, decorative backgrounds, logos, watermarks, or arbitrary colors.`,
+    `Repair this continuous declarative VisualStory after automated frame review. Content: ${JSON.stringify(content)}. Rejected story: ${JSON.stringify(rejected)}. Review defects: ${JSON.stringify(feedback)}. Return the complete corrected VisualStory JSON. Preserve valid world IDs, asset intents and primitive specifications. Change only the layout, timeline actions, camera actions, labels or semantic states required to fix the defects. Preserve one continuous world; do not create scene resets or executable code.`,
     visualPlanSchema,
   );
-  const beforeAssets = JSON.stringify(rejected.assetIntents);
-  const afterAssets = JSON.stringify(repaired.assetIntents);
-  const beforePrimitives = JSON.stringify(rejected.proposedPrimitives);
-  const afterPrimitives = JSON.stringify(repaired.proposedPrimitives);
-  if (beforeAssets !== afterAssets || beforePrimitives !== afterPrimitives)
+  if (
+    JSON.stringify(rejected.assetIntents) !==
+      JSON.stringify(repaired.assetIntents) ||
+    JSON.stringify(rejected.proposedPrimitives) !==
+      JSON.stringify(repaired.proposedPrimitives)
+  )
     throw new Error(
       "Visual quality repair cannot change validated assets or primitive specifications",
     );

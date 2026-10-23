@@ -101,6 +101,19 @@ export type PrimitiveKind =
   | "file"
   | "queue"
   | "service"
+  | "server"
+  | "server-cluster"
+  | "cache"
+  | "load-balancer"
+  | "cloud"
+  | "token"
+  | "repository"
+  | "pipeline"
+  | "container"
+  | "virtual-machine"
+  | "terminal"
+  | "phone"
+  | "decision"
   | "client"
   | "browser"
   | "api"
@@ -131,17 +144,36 @@ export type TransitionOperation =
   | "focus"
   | "dim"
   | "remove"
-  | "settle";
-export interface VisualTransition {
-  operation: TransitionOperation;
+  | "settle"
+  | "reflow"
+  | "row-insert"
+  | "queue-advance"
+  | "lock"
+  | "unlock"
+  | "fail"
+  | "succeed"
+  | "highlight-code"
+  | "expire"
+  | "branch";
+export type MotionPreset =
+  | "soft-enter"
+  | "draw-path"
+  | "travel-path"
+  | "state-change"
+  | "internal-action"
+  | "rearrange"
+  | "focus"
+  | "settle"
+  | "soft-exit";
+export interface TimelineAction {
+  id: string;
+  beatId: string;
+  action: TransitionOperation;
   objectIds: string[];
   anchor: string;
   value?: string | undefined;
-}
-export interface VisualBeat {
-  beatId: string;
-  objectIds: string[];
-  transitions: VisualTransition[];
+  motion: MotionPreset;
+  layout?: Array<{ objectId: string; box: VisualBox }> | undefined;
 }
 export interface PrimitiveSpec {
   id: string;
@@ -163,13 +195,23 @@ export interface AssetIntent {
   requiredFeatures: string[];
   sourcePreference: "official-first";
 }
-export interface VisualPlan {
-  version: 1;
-  objects: VisualObject[];
-  beats: VisualBeat[];
+export interface CameraAction {
+  id: string;
+  beatId: string;
+  action: "frame" | "pan" | "push-in" | "pull-out" | "follow" | "return-wide";
+  objectIds: string[];
+  anchor: string;
+  zoom: number;
+}
+export interface VisualStory {
+  version: 2;
+  world: VisualObject[];
+  timeline: TimelineAction[];
+  camera: CameraAction[];
   assetIntents: AssetIntent[];
   proposedPrimitives: PrimitiveSpec[];
 }
+export type VisualPlan = VisualStory;
 export interface ValidatedAsset {
   id: string;
   path: string;

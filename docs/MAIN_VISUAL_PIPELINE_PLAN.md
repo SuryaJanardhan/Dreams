@@ -81,7 +81,9 @@ The content result should separate:
 
 ## Typed visual language
 
-Replace per-scene generated code with a versioned `VisualPlan` schema. The first vocabulary should cover:
+The implemented version 2 contract is a reel-wide `VisualStory`, documented in [CONTINUOUS_VISUAL_SYSTEM.md](CONTINUOUS_VISUAL_SYSTEM.md). Its `world` persists for the complete reel, its global `timeline` mutates that world at narration anchors, and its restrained `camera` track reframes the same world. Content beats organize narration but never reset the visual canvas.
+
+Replace per-scene generated code with the versioned `VisualStory` schema. Its vocabulary covers:
 
 - text labels, code cards, tables, database cylinders, files, queues, servers, clients, browsers, APIs, locks, warnings, status chips, arrows, paths, packets, counters, and highlights;
 - layout groups such as rows, columns, stacks, split comparisons, pipelines, and callout regions;
