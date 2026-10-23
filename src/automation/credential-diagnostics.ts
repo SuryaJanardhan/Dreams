@@ -9,6 +9,19 @@ interface CheckResult {
   status: "passed" | "failed";
   detail: string;
 }
+function errorDetail(error: unknown) {
+  if (!(error instanceof Error)) return String(error);
+  const cause = error.cause;
+  if (!cause || typeof cause !== "object") return error.message;
+  const parsed = z
+    .object({ code: z.string().optional(), message: z.string().optional() })
+    .safeParse(cause);
+  if (!parsed.success) return error.message;
+  const detail = [parsed.data.code, parsed.data.message]
+    .filter(Boolean)
+    .join(": ");
+  return detail ? `${error.message} (${detail})` : error.message;
+}
 
 async function response(url: string, init: RequestInit = {}, timeout = 30_000) {
   const result = await fetch(url, {
@@ -248,10 +261,7 @@ async function main() {
       results.push({
         provider: check.provider,
         status: "failed",
-        detail: redact(
-          error instanceof Error ? error.message : String(error),
-          config.secrets,
-        ),
+        detail: redact(errorDetail(error), config.secrets),
       });
     }
   for (const result of results)
