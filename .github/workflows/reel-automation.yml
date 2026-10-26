@@ -4,6 +4,15 @@ on:
     # 11:30 AM / 11:30 PM IST. GitHub schedules may be delayed.
     - cron: "0 6,18 * * *"
   workflow_dispatch:
+    inputs:
+      operation:
+        description: "Operation to run"
+        required: true
+        default: production
+        type: choice
+        options:
+          - production
+          - reset_sheet_drafts
 permissions:
   contents: read
 concurrency:
@@ -48,9 +57,21 @@ jobs:
       - name: Install and check TypeScript modules
         run: npm ci && npm run typecheck:automation
       - name: Validate provider credentials without publishing
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' && inputs.operation == 'production'
         run: npm run diagnose:credentials
+      - name: Back up and reset Sheet with niche drafts
+        if: github.event_name == 'workflow_dispatch' && inputs.operation == 'reset_sheet_drafts'
+        run: npm run admin:reset-sheet-drafts
+      - name: Upload Sheet backup
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.operation == 'reset_sheet_drafts'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sheet-backup-${{ github.run_id }}
+          path: .sheet-admin-backup
+          if-no-files-found: error
+          retention-days: 14
       - name: Check Sheet control and eligibility before expensive setup
+        if: github.event_name != 'workflow_dispatch' || inputs.operation == 'production'
         id: gate
         run: node --import tsx src/automation/gate.ts
       - uses: actions/setup-python@v5
