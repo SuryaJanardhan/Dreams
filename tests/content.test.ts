@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   gradeContent,
+  parseGroundedJson,
   requireExplanationQuality,
 } from "../src/automation/content/index.js";
 test("supplied narration preserves punctuation and wording exactly, not only normalized tokens", () => {
@@ -86,4 +87,20 @@ test("explanation quality rejects a generic example despite valid formatting", (
       }),
     /example usefulness/i,
   );
+});
+
+test("grounded JSON parsing accepts plain, fenced and cited wrapper text", () => {
+  assert.deepEqual(parseGroundedJson('{"summary":"plain"}'), {
+    summary: "plain",
+  });
+  assert.deepEqual(parseGroundedJson('```json\n{"summary":"fenced"}\n```'), {
+    summary: "fenced",
+  });
+  assert.deepEqual(
+    parseGroundedJson(
+      'Grounded result:\n{"summary":"wrapped"}\nSources follow.',
+    ),
+    { summary: "wrapped" },
+  );
+  assert.throws(() => parseGroundedJson("no structured value"), /no JSON/);
 });

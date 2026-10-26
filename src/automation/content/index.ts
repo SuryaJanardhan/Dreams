@@ -39,6 +39,29 @@ const groundedResponseSchema = z.object({
     )
     .min(1),
 });
+export function parseGroundedJson(text: string): unknown {
+  const trimmed = text.trim();
+  const fenced = /^```(?:json)?\s*([\s\S]*?)\s*```$/i.exec(trimmed)?.[1];
+  const candidate = (fenced ?? trimmed).trim();
+  try {
+    return JSON.parse(candidate);
+  } catch {
+    const objectStart = candidate.indexOf("{");
+    const objectEnd = candidate.lastIndexOf("}");
+    const arrayStart = candidate.indexOf("[");
+    const arrayEnd = candidate.lastIndexOf("]");
+    const start =
+      objectStart < 0
+        ? arrayStart
+        : arrayStart < 0
+          ? objectStart
+          : Math.min(objectStart, arrayStart);
+    const end = Math.max(objectEnd, arrayEnd);
+    if (start < 0 || end <= start)
+      throw new Error("Grounded Gemini response contains no JSON value");
+    return JSON.parse(candidate.slice(start, end + 1));
+  }
+}
 export class Gemini {
   constructor(private readonly http: Http) {}
   async generate<T>(
@@ -80,9 +103,17 @@ export class Gemini {
         method: "POST",
         headers: { "x-goog-api-key": key, "Content-Type": "application/json" },
         body: JSON.stringify({
-          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          contents: [
+            {
+              role: "user",
+              parts: [
+                {
+                  text: `${prompt}\nReturn only the requested valid JSON object. Do not use Markdown fences or explanatory text.`,
+                },
+              ],
+            },
+          ],
           tools: [{ google_search: {} }],
-          generationConfig: { responseMimeType: "application/json" },
         }),
         timeout: 180000,
       },
@@ -90,7 +121,7 @@ export class Gemini {
     const candidate = response.candidates[0];
     const text =
       candidate?.content.parts.map((part) => part.text ?? "").join("") ?? "";
-    const input: unknown = JSON.parse(text);
+    const input = parseGroundedJson(text);
     const seen = new Set<string>();
     const sources = (candidate?.groundingMetadata?.groundingChunks ?? [])
       .flatMap((chunk) => (chunk.web ? [chunk.web] : []))
