@@ -69,6 +69,7 @@ jobs:
           name: sheet-backup-${{ github.run_id }}
           path: .sheet-admin-backup
           if-no-files-found: error
+          include-hidden-files: true
           retention-days: 14
       - name: Check Sheet control and eligibility before expensive setup
         if: github.event_name != 'workflow_dispatch' || inputs.operation == 'production'
@@ -108,9 +109,10 @@ jobs:
           name: primitive-reviews-${{ github.run_id }}
           path: .primitive-reviews
           if-no-files-found: ignore
+          include-hidden-files: true
           retention-days: 7
       - name: Report setup failure before production
-        if: failure() && steps.production.outcome == 'skipped'
+        if: failure() && (github.event_name != 'workflow_dispatch' || inputs.operation == 'production') && steps.production.outcome == 'skipped'
         run: node --import tsx src/automation/setup-failure.ts
       - name: In-job last-resort temporary cleanup
         if: always()
