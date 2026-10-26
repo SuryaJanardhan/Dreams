@@ -140,7 +140,7 @@ async function main() {
     JSON.stringify(backup, null, 2),
   );
   for (const [tab, cells] of [
-    [config.SHEET_TAB, "A2:AZ"],
+    [config.SHEET_TAB, "A1:AZ"],
     ["PrimitiveReview", "A2:J"],
   ] as const) {
     const response = await fetch(
