@@ -14,6 +14,7 @@ on:
           - production
           - reset_sheet_drafts
           - social_inventory
+          - facebook_rebrand_hide
 permissions:
   contents: read
 concurrency:
@@ -80,6 +81,18 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: social-inventory-${{ github.run_id }}
+          path: .social-admin
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14
+      - name: Rebrand Facebook and hide old posts
+        if: github.event_name == 'workflow_dispatch' && inputs.operation == 'facebook_rebrand_hide'
+        run: npm run admin:facebook-rebrand-hide
+      - name: Upload Facebook change report
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.operation == 'facebook_rebrand_hide'
+        uses: actions/upload-artifact@v4
+        with:
+          name: facebook-rebrand-hide-${{ github.run_id }}
           path: .social-admin
           if-no-files-found: error
           include-hidden-files: true
