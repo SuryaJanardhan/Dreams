@@ -15,6 +15,7 @@ on:
           - reset_sheet_drafts
           - social_inventory
           - facebook_rebrand_hide
+          - youtube_rebrand_unlist
 permissions:
   contents: read
 concurrency:
@@ -93,6 +94,18 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: facebook-rebrand-hide-${{ github.run_id }}
+          path: .social-admin
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14
+      - name: Update YouTube description and unlist old videos
+        if: github.event_name == 'workflow_dispatch' && inputs.operation == 'youtube_rebrand_unlist'
+        run: npm run admin:youtube-rebrand-unlist
+      - name: Upload YouTube change report
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.operation == 'youtube_rebrand_unlist'
+        uses: actions/upload-artifact@v4
+        with:
+          name: youtube-rebrand-unlist-${{ github.run_id }}
           path: .social-admin
           if-no-files-found: error
           include-hidden-files: true

@@ -53,11 +53,22 @@ async function paged(
 
 async function main() {
   const operation = process.argv[2];
-  if (!operation || !["inventory", "facebook-rebrand-hide"].includes(operation))
-    throw new Error("Expected inventory or facebook-rebrand-hide operation");
+  if (
+    !operation ||
+    !["inventory", "facebook-rebrand-hide", "youtube-rebrand-unlist"].includes(
+      operation,
+    )
+  )
+    throw new Error(
+      "Expected inventory, facebook-rebrand-hide or youtube-rebrand-unlist operation",
+    );
   const config = loadConfig();
   if (operation === "facebook-rebrand-hide") {
     await facebookRebrandAndHide(config);
+    return;
+  }
+  if (operation === "youtube-rebrand-unlist") {
+    await youtubeRebrandAndUnlist(config);
     return;
   }
   const output = {
@@ -202,6 +213,207 @@ async function main() {
     JSON.stringify(output, null, 2),
   );
   console.log(`Social inventory saved: ${directory}`);
+}
+
+async function youtubeAccessToken(config: ReturnType<typeof loadConfig>) {
+  const response = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: config.GOOGLE_CLIENT_ID,
+      client_secret: config.GOOGLE_CLIENT_SECRET,
+      refresh_token: config.YOUTUBE_REFRESH_TOKEN,
+      grant_type: "refresh_token",
+    }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!response.ok) throw new Error("YouTube token refresh failed");
+  const value: unknown = await response.json();
+  return z.object({ access_token: z.string().min(1) }).parse(value)
+    .access_token;
+}
+
+async function youtubeRebrandAndUnlist(config: ReturnType<typeof loadConfig>) {
+  const accessToken = await youtubeAccessToken(config);
+  const headers = {
+    Authorization: `Bearer ${accessToken}`,
+    "Content-Type": "application/json",
+  };
+  const channels = z
+    .object({
+      items: z
+        .array(
+          z
+            .object({
+              id: z.string(),
+              brandingSettings: z.record(z.string(), z.unknown()),
+              contentDetails: z.object({
+                relatedPlaylists: z.object({ uploads: z.string() }),
+              }),
+            })
+            .passthrough(),
+        )
+        .min(1),
+    })
+    .parse(
+      await json(
+        "https://www.googleapis.com/youtube/v3/channels?part=id,brandingSettings,contentDetails&mine=true",
+        headers,
+      ),
+    );
+  const channel = channels.items[0];
+  if (!channel) throw new Error("YouTube channel missing");
+  const channelSettings = z
+    .object({ channel: z.record(z.string(), z.unknown()) })
+    .passthrough()
+    .parse(channel.brandingSettings);
+  channelSettings.channel.description =
+    "surya.exe makes backend engineering and system design easier to see.\n\nClean visual stories about APIs, databases, distributed systems, DevOps, security and interview concepts. Built for developers who want the why, not just the definition.\n\nsystems, decoded.";
+  channelSettings.channel.keywords =
+    "backend engineering system design APIs databases distributed systems DevOps software engineering coding interviews";
+  const updateChannel = await fetch(
+    "https://www.googleapis.com/youtube/v3/channels?part=brandingSettings",
+    {
+      method: "PUT",
+      headers,
+      body: JSON.stringify({
+        id: channel.id,
+        brandingSettings: channelSettings,
+      }),
+      signal: AbortSignal.timeout(60_000),
+    },
+  );
+  if (!updateChannel.ok)
+    throw new Error(
+      `YouTube channel description update failed: ${updateChannel.status}`,
+    );
+  const videoIds: string[] = [];
+  let pageToken = "";
+  do {
+    const params = new URLSearchParams({
+      part: "contentDetails",
+      playlistId: channel.contentDetails.relatedPlaylists.uploads,
+      maxResults: "50",
+      ...(pageToken ? { pageToken } : {}),
+    });
+    const page = z
+      .object({
+        items: z.array(
+          z.object({
+            contentDetails: z.object({ videoId: z.string() }),
+          }),
+        ),
+        nextPageToken: z.string().optional(),
+      })
+      .parse(
+        await json(
+          `https://www.googleapis.com/youtube/v3/playlistItems?${params}`,
+          headers,
+        ),
+      );
+    videoIds.push(...page.items.map((item) => item.contentDetails.videoId));
+    pageToken = page.nextPageToken ?? "";
+  } while (pageToken && videoIds.length < 500);
+  const updated: string[] = [];
+  const alreadyUnlisted: string[] = [];
+  const failures: Array<{ id: string; error: string }> = [];
+  for (let offset = 0; offset < videoIds.length; offset += 50) {
+    const ids = videoIds.slice(offset, offset + 50);
+    const videos = z
+      .object({
+        items: z.array(
+          z.object({
+            id: z.string(),
+            status: z
+              .object({
+                privacyStatus: z.string(),
+                embeddable: z.boolean().optional(),
+                license: z.string().optional(),
+                publicStatsViewable: z.boolean().optional(),
+                selfDeclaredMadeForKids: z.boolean().optional(),
+                containsSyntheticMedia: z.boolean().optional(),
+              })
+              .passthrough(),
+          }),
+        ),
+      })
+      .parse(
+        await json(
+          `https://www.googleapis.com/youtube/v3/videos?part=status&id=${encodeURIComponent(ids.join(","))}`,
+          headers,
+        ),
+      );
+    for (const video of videos.items) {
+      if (video.status.privacyStatus === "unlisted") {
+        alreadyUnlisted.push(video.id);
+        continue;
+      }
+      const status = {
+        privacyStatus: "unlisted",
+        ...(video.status.embeddable === undefined
+          ? {}
+          : { embeddable: video.status.embeddable }),
+        ...(video.status.license === undefined
+          ? {}
+          : { license: video.status.license }),
+        ...(video.status.publicStatsViewable === undefined
+          ? {}
+          : { publicStatsViewable: video.status.publicStatsViewable }),
+        ...(video.status.selfDeclaredMadeForKids === undefined
+          ? {}
+          : { selfDeclaredMadeForKids: video.status.selfDeclaredMadeForKids }),
+        ...(video.status.containsSyntheticMedia === undefined
+          ? {}
+          : { containsSyntheticMedia: video.status.containsSyntheticMedia }),
+      };
+      try {
+        const response = await fetch(
+          "https://www.googleapis.com/youtube/v3/videos?part=status",
+          {
+            method: "PUT",
+            headers,
+            body: JSON.stringify({ id: video.id, status }),
+            signal: AbortSignal.timeout(60_000),
+          },
+        );
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        updated.push(video.id);
+      } catch (error) {
+        failures.push({
+          id: video.id,
+          error: redact(
+            error instanceof Error ? error.message : String(error),
+            config.secrets,
+          ),
+        });
+      }
+    }
+  }
+  const directory = resolve(
+    process.cwd(),
+    ".social-admin",
+    process.env.GITHUB_RUN_ID ?? `local-${Date.now()}`,
+  );
+  await mkdir(directory, { recursive: true });
+  await writeFile(
+    resolve(directory, "youtube-rebrand-unlist.json"),
+    JSON.stringify(
+      {
+        createdAt: new Date().toISOString(),
+        channelId: channel.id,
+        channelDescriptionUpdated: true,
+        totalVideos: videoIds.length,
+        updated,
+        alreadyUnlisted,
+        failures,
+      },
+      null,
+      2,
+    ),
+  );
+  console.log(
+    `YouTube operation complete: ${updated.length} changed to unlisted; ${alreadyUnlisted.length} already unlisted; ${failures.length} failed`,
+  );
 }
 
 async function facebookRebrandAndHide(config: ReturnType<typeof loadConfig>) {
