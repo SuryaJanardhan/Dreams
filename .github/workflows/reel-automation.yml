@@ -13,6 +13,7 @@ on:
         options:
           - production
           - reset_sheet_drafts
+          - social_inventory
 permissions:
   contents: read
 concurrency:
@@ -68,6 +69,18 @@ jobs:
         with:
           name: sheet-backup-${{ github.run_id }}
           path: .sheet-admin-backup
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14
+      - name: Inventory social accounts without changes
+        if: github.event_name == 'workflow_dispatch' && inputs.operation == 'social_inventory'
+        run: npm run admin:social-inventory
+      - name: Upload social inventory
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.operation == 'social_inventory'
+        uses: actions/upload-artifact@v4
+        with:
+          name: social-inventory-${{ github.run_id }}
+          path: .social-admin
           if-no-files-found: error
           include-hidden-files: true
           retention-days: 14

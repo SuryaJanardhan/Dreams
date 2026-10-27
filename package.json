@@ -48,6 +48,7 @@
     "automation": "node --import tsx src/automation/main.ts",
     "diagnose:credentials": "node --import tsx src/automation/credential-diagnostics.ts",
     "admin:reset-sheet-drafts": "node --import tsx src/automation/sheet-admin.ts reset-drafts",
+    "admin:social-inventory": "node --import tsx src/automation/social-admin.ts inventory",
     "typecheck": "npm run typecheck:automation && npm run typecheck:legacy && npm run typecheck:composer",
     "build": "npm run build:automation && npm run build:legacy && npm --prefix reel-composer run build",
     "test": "node --import tsx --test --test-concurrency=1 tests/*.test.ts",
