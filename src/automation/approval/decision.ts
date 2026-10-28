@@ -61,10 +61,9 @@ export async function runApprovalDecision(
     let notification = "sent";
     try {
       await deps.save(progress);
-      progress.cleanup.push(...(await deps.finish(approval, "rejected")));
     } catch (error) {
       safe = false;
-      progress.remarks += ` Rejection finalization will be reclaimed: ${message(error)}`;
+      progress.remarks += ` Rejection Sheet update will be reclaimed: ${message(error)}`;
     }
     if (safe) {
       try {
@@ -72,7 +71,15 @@ export async function runApprovalDecision(
       } catch (error) {
         notification = `failed: ${message(error)}`;
         progress.remarks += ` Rejection confirmation email ${notification}`;
-        await deps.save(progress).catch(() => {});
+        safe = false;
+      }
+    }
+    if (safe) {
+      try {
+        progress.cleanup.push(...(await deps.finish(approval, "rejected")));
+      } catch (error) {
+        safe = false;
+        progress.remarks += ` Rejection cleanup will be reclaimed: ${message(error)}`;
       }
     }
     return {
@@ -129,12 +136,16 @@ export async function runApprovalDecision(
     progress.remarks = `Approved publishing failed: ${message(error)}`;
   }
 
-  try {
-    progress.cleanup.push(...(await deps.finish(approval, finishStatus)));
-    progress.cleanup.push(...(await workspace.cleanup()));
-  } catch (error) {
-    progress.remarks += ` Cleanup failed: ${message(error)}`;
-    finishStatus = "failed";
+  for (const [label, cleanup] of [
+    ["approval/publication", () => deps.finish(approval, finishStatus)],
+    ["workspace", () => workspace.cleanup()],
+  ] as const) {
+    try {
+      progress.cleanup.push(...(await cleanup()));
+    } catch (error) {
+      progress.remarks += ` ${label} cleanup failed: ${message(error)}`;
+      finishStatus = "failed";
+    }
   }
   if (progress.status !== "Completed" || finishStatus === "failed")
     await deps.pause(progress.remarks);

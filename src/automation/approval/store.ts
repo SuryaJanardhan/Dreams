@@ -359,10 +359,15 @@ export class ApprovalStore {
     const staleBefore = new Date(
       this.now().getTime() - 2 * 3600000,
     ).toISOString();
+    const freshCandidate = fresh[0];
     const candidate =
-      fresh[0] ??
+      freshCandidate ??
       (await read(`claimed_at=lt.${encodeURIComponent(staleBefore)}`))[0];
     if (!candidate) return null;
+    if (!freshCandidate && candidate.status === "approved")
+      throw new Error(
+        `Stale approved claim ${candidate.id} requires manual recovery; remote publication side effects may already exist`,
+      );
     const claimGuard = candidate.claimed_at
       ? `claimed_at=eq.${encodeURIComponent(candidate.claimed_at)}`
       : "claimed_at=is.null";

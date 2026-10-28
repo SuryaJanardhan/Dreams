@@ -52,6 +52,9 @@ The Edge Function uses Supabase-provided `SUPABASE_URL` and
 
 If GitHub dispatch is temporarily unavailable, the persisted decision is not
 lost. The twice-daily scheduled workflow claims it before generating new work.
+Rejected claims can be reclaimed automatically because they have no social
+side effects. A stale approved publishing claim pauses for manual recovery
+instead of risking duplicate posts after an unknown crash point.
 
 ## Operational rules
 
