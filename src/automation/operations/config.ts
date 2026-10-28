@@ -44,6 +44,7 @@ const environment = z.object({
     .min(20)
     .max(340)
     .default(120),
+  APPROVAL_TTL_HOURS: z.coerce.number().int().min(24).max(168).default(72),
 });
 export type Config = z.infer<typeof environment> & {
   credentials: z.infer<typeof serviceAccount>;

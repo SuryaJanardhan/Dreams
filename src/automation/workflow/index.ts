@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type {
   CaptionTrack,
   ContentPlan,
+  ApprovalSummary,
   ResearchPacket,
   Narration,
   Outcome,
@@ -65,17 +66,20 @@ export interface WorkflowDependencies {
     video: RenderedVideo,
     workspace: Workspace,
   ): Promise<RenderedVideo>;
-  publish(
+  prepareApproval(
     video: RenderedVideo,
     plan: ContentPlan,
-    workspace: Workspace,
-    record: (result: Publication) => Promise<void>,
-    journal: (snapshot: PublicationJournal) => Promise<void>,
-  ): Promise<void>;
+    progress: Progress,
+  ): Promise<ApprovalHandoff>;
   cleanupStaging(): Promise<string[]>;
   notify(progress: Progress): Promise<void>;
   cancelled(): boolean;
   now(): Date;
+}
+export interface ApprovalHandoff {
+  summary: ApprovalSummary;
+  deliver(): Promise<void>;
+  revoke(): Promise<void>;
 }
 /** Serial job lifecycle. Publication adapters report every attempted target, even after a target fails. */
 export async function runWorkflow(
@@ -83,6 +87,7 @@ export async function runWorkflow(
 ): Promise<Outcome> {
   let progress: Progress | undefined;
   let workspace: Workspace | undefined;
+  let approvalHandoff: ApprovalHandoff | undefined;
   const touch = () => {
     if (progress) progress.updatedAt = deps.now().toISOString();
   };
@@ -198,35 +203,17 @@ export async function runWorkflow(
       progress.grades.rendering = checkedVideo.grade;
       if (checkedVideo.checks)
         progress.metrics = { ...progress.metrics, ...checkedVideo.checks };
-      await step("publishing", () =>
-        deps.publish(
-          checkedVideo,
-          plan,
-          work,
-          async (result) => {
-            if (!progress) throw new Error("Missing job progress");
-            progress.publications = progress.publications.map((previous) =>
-              previous.platform === result.platform ? result : previous,
-            );
-            await save();
-          },
-          async (snapshot) => {
-            job.journal = structuredClone(snapshot);
-            await save();
-          },
-        ),
+      approvalHandoff = await step("approval", () =>
+        deps.prepareApproval(checkedVideo, plan, job),
       );
-      const complete = progress.publications.every(
-        (result) => result.state === "Published",
-      );
-      progress.status = complete
-        ? "Completed"
-        : progress.publications.some((result) => result.state === "Published")
-          ? "Partial"
-          : "Failed";
-      progress.remarks = complete
-        ? "All three platforms reported published/ready with canonical links."
-        : "Publication attempts finished; at least one required target was not verified.";
+      progress.approval = approvalHandoff.summary;
+      progress.status = "AwaitingApproval";
+      progress.publications = initialPublications().map((publication) => ({
+        ...publication,
+        detail: "Secure review approval is required before publishing",
+      }));
+      progress.remarks =
+        "Video generated, quality-checked and emailed for review. No social upload has been attempted.";
     }
   } catch (error) {
     if (!progress) {
@@ -272,8 +259,17 @@ export async function runWorkflow(
   }
   if (finalizationErrors.length)
     progress.remarks += ` Cleanup Failed: ${finalizationErrors.join("; ")}`;
+  if (progress.status === "AwaitingApproval" && finalizationErrors.length > 0) {
+    await approvalHandoff?.revoke().catch((error) => {
+      progress!.remarks += ` Approval revocation failed: ${message(error)}`;
+    });
+    progress.status = "Failed";
+    progress.remarks +=
+      " Review access was revoked because finalization did not complete safely.";
+  }
   const pause =
-    progress.status !== "Completed" || finalizationErrors.length > 0;
+    !["Completed", "AwaitingApproval", "Rejected"].includes(progress.status) ||
+    finalizationErrors.length > 0;
   if (pause) {
     try {
       await deps.pause(progress.remarks);
@@ -288,6 +284,14 @@ export async function runWorkflow(
   } catch (error) {
     finalization.persistence = "failed";
     progress.remarks += ` Final Sheet update failed: ${message(error)}`;
+    if (progress.status === "AwaitingApproval") {
+      await approvalHandoff?.revoke().catch((revokeError) => {
+        progress!.remarks += ` Approval revocation failed: ${message(revokeError)}`;
+      });
+      progress.status = "Failed";
+      progress.remarks +=
+        " Review access was revoked because AwaitingApproval could not be persisted.";
+    }
     try {
       await deps.pause(progress.remarks);
       finalization.pause = "saved";
@@ -296,13 +300,36 @@ export async function runWorkflow(
     }
   }
   let notification = "sent";
-  try {
-    await deps.notify(progress);
-    finalization.notification = "sent";
-  } catch (error) {
-    finalization.notification = "failed";
-    notification = `failed: ${message(error)}`;
-    progress.remarks += ` Notification ${notification}`;
+  if (progress.status === "AwaitingApproval") {
+    try {
+      await approvalHandoff?.deliver();
+      finalization.notification = "sent";
+      progress.remarks =
+        "Video generated, quality-checked and emailed for review. No social upload has been attempted.";
+    } catch (error) {
+      finalization.notification = "failed";
+      notification = `failed: ${message(error)}`;
+      progress.remarks += ` Review notification ${notification}`;
+      await approvalHandoff?.revoke().catch((revokeError) => {
+        progress!.remarks += ` Approval revocation failed: ${message(revokeError)}`;
+      });
+      progress.status = "Failed";
+      try {
+        await deps.pause(progress.remarks);
+        finalization.pause = "saved";
+      } catch {
+        finalization.pause = "failed";
+      }
+    }
+  } else {
+    try {
+      await deps.notify(progress);
+      finalization.notification = "sent";
+    } catch (error) {
+      finalization.notification = "failed";
+      notification = `failed: ${message(error)}`;
+      progress.remarks += ` Notification ${notification}`;
+    }
   }
   try {
     await save();
@@ -321,7 +348,7 @@ export async function runWorkflow(
     progress,
     notification,
     operationalSuccess:
-      progress.status === "Completed" &&
+      ["Completed", "AwaitingApproval", "Rejected"].includes(progress.status) &&
       finalization.cleanup === "passed" &&
       finalization.persistence === "passed" &&
       finalization.pause !== "failed",

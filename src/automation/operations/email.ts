@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import type { Progress } from "../domain.js";
+import type { ReviewRequest } from "../approval/store.js";
 import { message } from "../domain.js";
 import { redact } from "./config.js";
 export function createNotifier(
@@ -33,6 +34,29 @@ export function createNotifier(
     throw new Error(redact(error, secrets));
   };
   return {
+    async review(progress: Progress, request: ReviewRequest) {
+      const escape = (value: string) =>
+        value
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/\"/g, "&quot;");
+      const subject = `Dreams ${request.reminder ? "review reminder" : "review required"} — ${progress.task.idea.slice(0, 80)}`;
+      const text = [
+        `Video ready for review: ${progress.task.idea}`,
+        `Watch: ${request.previewUrl}`,
+        `Approve or reject: ${request.reviewUrl}`,
+        `This request expires at ${request.approval.expiresAt}.`,
+        "No social upload occurs until you approve on the confirmation page.",
+      ].join("\n\n");
+      const button = (label: string, url: string, color: string) =>
+        `<a href="${escape(url)}" style="display:inline-block;margin:6px;padding:13px 20px;background:${color};color:white;text-decoration:none;border-radius:7px;font-weight:700">${escape(label)}</a>`;
+      await send(
+        subject,
+        text,
+        `<div style="font-family:Arial,sans-serif;color:#151515;max-width:620px"><h2>${escape(subject)}</h2><p>The generated video passed automated checks. Review it before any platform receives it.</p>${button("Watch video", request.previewUrl, "#2878d0")}<br/>${button("Approve publishing", `${request.reviewUrl}&intent=approve`, "#3f8f62")}${button("Reject", `${request.reviewUrl}&intent=reject`, "#cf4e46")}<p><strong>A final confirmation is required on the review page.</strong> This prevents email scanners from approving automatically.</p><p>Expires: ${escape(request.approval.expiresAt)}</p></div>`,
+      );
+    },
     async progress(progress: Progress) {
       const links = progress.publications
         .map(
@@ -102,7 +126,11 @@ export function createNotifier(
           : "",
         progress.status === "Completed"
           ? "All three publications verified."
-          : "Production is paused where the Sheet control write succeeded. Fix the incident, then clear PAUSED. No automatic retry will publish this task.",
+          : progress.status === "Rejected"
+            ? "You rejected this video. No platform upload was attempted; healthy future scheduling remains enabled."
+            : progress.status === "ApprovalExpired"
+              ? "The review expired without a decision. No platform upload was attempted; requeue the task to generate a fresh review."
+              : "Production is paused where the Sheet control write succeeded. Fix the incident, then clear PAUSED. No automatic retry will publish this task.",
       ]
         .filter(Boolean)
         .join("\n\n");

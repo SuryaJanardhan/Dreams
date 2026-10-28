@@ -19,7 +19,7 @@ import { createVoice } from "./voice/index.js";
 import { createCaptions } from "./captions/index.js";
 import { renderVideo } from "./rendering/index.js";
 import { createVisualQuality, VisualQualityError } from "./quality/index.js";
-import { Publisher } from "./publishing/index.js";
+import { ApprovalStore } from "./approval/store.js";
 import { runWorkflow } from "./workflow/index.js";
 import { message } from "./domain.js";
 export async function main() {
@@ -60,7 +60,7 @@ export async function main() {
     const sheets = new Sheets(config, http);
     const gemini = new Gemini(http);
     const notifier = createNotifier(process.env, secrets);
-    const publisher = new Publisher(config, http);
+    const approvalStore = new ApprovalStore(config, http);
     const finalize = () => {
       if (!finalizing) {
         finalizing = true;
@@ -173,11 +173,17 @@ export async function main() {
           return rerendered;
         }
       },
-      publish: (video, plan, workspace, record, journal) =>
-        publisher.publish(video, plan, workspace, record, journal),
-      cleanupStaging: () => {
+      prepareApproval: async (video, plan, progress) => {
+        const request = await approvalStore.prepare(video, plan, progress);
+        return {
+          summary: request.approval,
+          deliver: () => notifier.review(progress, request),
+          revoke: () => approvalStore.revoke(request.approval),
+        };
+      },
+      cleanupStaging: async () => {
         finalize();
-        return publisher.cleanup();
+        return ["No social publication staging created before approval"];
       },
       notify: (p) =>
         notifier.progress({ ...p, remarks: redact(p.remarks, secrets) }),

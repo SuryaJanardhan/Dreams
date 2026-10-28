@@ -78,21 +78,20 @@ function fixture() {
       grade: 90,
     }),
     quality: async (_plan, _visual, _assets, _voice, _captions, video) => video,
-    publish: async (_video, _plan, _ws, record) => {
-      for (const platform of ["youtube", "instagram", "facebook"] as const) {
-        events.push(platform);
-        await record(
-          platform === "instagram"
-            ? { platform, state: "Failed", detail: "rejected" }
-            : {
-                platform,
-                state: "Published",
-                id: platform,
-                url: `https://example.org/${platform}`,
-              },
-        );
-      }
-    },
+    prepareApproval: async () => ({
+      summary: {
+        id: "approval-1",
+        status: "pending" as const,
+        previewKey: "reviews/job-1/final.mp4",
+        expiresAt: "2026-10-15T00:00:00.000Z",
+      },
+      deliver: async () => {
+        events.push("approval-email");
+      },
+      revoke: async () => {
+        events.push("approval-revoked");
+      },
+    }),
     cleanupStaging: async () => {
       events.push("clean-staging");
       return ["Staging removed"];
@@ -105,42 +104,19 @@ function fixture() {
   };
   return { deps, events, snapshots };
 }
-test("partial publication attempts all targets, preserves links, pauses, and cleans before email", async () => {
+test("quality completion requests review and cannot call social publishers", async () => {
   const { deps, events, snapshots } = fixture();
   const result = await runWorkflow(deps);
-  assert.equal(result.state, "Partial");
-  assert.deepEqual(
-    events.filter((e) => ["youtube", "instagram", "facebook"].includes(e)),
-    ["youtube", "instagram", "facebook"],
+  assert.equal(result.state, "AwaitingApproval");
+  assert.ok(events.includes("approval-email"));
+  assert.ok(events.indexOf("clean-local") < events.indexOf("approval-email"));
+  assert.ok(
+    !events.some((event) =>
+      ["youtube", "instagram", "facebook"].includes(event),
+    ),
   );
-  assert.ok(events.indexOf("clean-local") < events.indexOf("email"));
-  assert.ok(events.includes("pause"));
-  const last = snapshots.at(-1);
-  assert.equal(
-    last?.publications.filter((p) => p.state === "Published").length,
-    2,
-  );
-  assert.equal(last?.lastCompleted, "publishing");
-});
-test("Completed requires all verified targets and successful email sees cleanup results", async () => {
-  const { deps, events } = fixture();
-  deps.publish = async (_v, _p, _w, record) => {
-    for (const platform of ["youtube", "instagram", "facebook"] as const)
-      await record({
-        platform,
-        state: "Published",
-        id: platform,
-        url: `https://example.org/${platform}`,
-      });
-  };
-  let email: Progress | undefined;
-  deps.notify = async (p) => {
-    email = structuredClone(p);
-  };
-  const result = await runWorkflow(deps);
-  assert.equal(result.state, "Completed");
   assert.ok(!events.includes("pause"));
-  assert.equal(email?.cleanup.length, 2);
+  assert.equal(snapshots.at(-1)?.lastCompleted, "approval");
 });
 test("empty queue never creates a workspace, pauses, or sends email", async () => {
   const { deps, events } = fixture();
@@ -159,28 +135,62 @@ test("render failure stops publication but still pauses, cleans, and reports the
   assert.equal(snapshots.at(-1)?.stage, "rendering");
   assert.equal(snapshots.at(-1)?.lastCompleted, "captions");
 });
-test("cleanup failure keeps completed publications but pauses further work", async () => {
+test("cleanup failure preserves the review record but pauses further generation", async () => {
   const { deps, events } = fixture();
-  deps.publish = async (_v, _p, _w, record) => {
-    for (const platform of ["youtube", "instagram", "facebook"] as const)
-      await record({
-        platform,
-        state: "Published",
-        id: platform,
-        url: `https://example.org/${platform}`,
-      });
-  };
   deps.cleanupStaging = async () => {
     throw new Error("Storage deletion rejected");
   };
   const outcome = await runWorkflow(deps);
-  assert.equal(outcome.state, "Completed");
+  assert.equal(outcome.state, "Failed");
   assert.ok(events.includes("pause"));
+  assert.ok(events.includes("approval-revoked"));
   assert.ok(
     "progress" in outcome &&
       outcome.progress.remarks.includes("Cleanup Failed"),
   );
   assert.ok(events.includes("clean-local"));
+});
+
+test("review email failure revokes the link and pauses without publishing", async () => {
+  const { deps, events } = fixture();
+  const prepared = await deps.prepareApproval(
+    {
+      path: "video.mp4",
+      duration: 60,
+      width: 1080,
+      height: 1920,
+      fps: 60,
+      grade: 90,
+    },
+    {
+      type: "question",
+      title: "fixture",
+      narration: "fixture",
+      beats: [],
+      copies: {
+        youtube: { title: "fixture", description: "fixture" },
+        instagram: { title: "fixture", description: "fixture" },
+        facebook: { title: "fixture", description: "fixture" },
+      },
+      research: {
+        mode: "gemini-best-effort",
+        summary: "fixture",
+        sources: [],
+      },
+      grade: 90,
+    },
+    {} as Progress,
+  );
+  deps.prepareApproval = async () => ({
+    ...prepared,
+    deliver: async () => {
+      throw new Error("SMTP unavailable");
+    },
+  });
+  const result = await runWorkflow(deps);
+  assert.equal(result.state, "Failed");
+  assert.ok(events.includes("approval-revoked"));
+  assert.ok(events.includes("pause"));
 });
 
 test("graceful cancellation clears local work, records the stopping stage and emails", async () => {
@@ -218,31 +228,22 @@ test("stale processing is interrupted and reported without resuming any stage", 
   assert.ok(!events.includes("youtube"));
 });
 
-test("a lost final Sheet write cannot report operational success even when posts succeeded", async () => {
+test("a lost final Sheet write cannot report an operationally safe review handoff", async () => {
   const { deps } = fixture();
-  deps.publish = async (_v, _p, _w, record) => {
-    for (const platform of ["youtube", "instagram", "facebook"] as const)
-      await record({
-        platform,
-        state: "Published",
-        id: platform,
-        url: `https://example.org/${platform}`,
-      });
-  };
   const originalSave = deps.save;
   deps.save = async (p) => {
-    if (p.status === "Completed") throw new Error("Sheet unavailable");
+    if (p.status === "AwaitingApproval") throw new Error("Sheet unavailable");
     await originalSave(p);
   };
   const result = await runWorkflow(deps);
   assert.ok("progress" in result);
   if (!("progress" in result)) throw new Error("Missing progress");
-  assert.equal(result.state, "Completed");
+  assert.equal(result.state, "Failed");
   assert.equal(result.operationalSuccess, false);
   assert.equal(result.progress.finalization?.persistence, "failed");
   assert.equal(result.progress.finalization?.pause, "saved");
   assert.equal(
     result.progress.publications.filter((p) => p.state === "Published").length,
-    3,
+    0,
   );
 });

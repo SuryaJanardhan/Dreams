@@ -16,6 +16,8 @@ on:
           - social_inventory
           - facebook_rebrand_hide
           - youtube_rebrand_unlist
+  repository_dispatch:
+    types: [approval-decision]
 permissions:
   contents: read
 concurrency:
@@ -49,6 +51,8 @@ jobs:
       VOICEBOX_REFERENCE_TEXT: ${{ secrets.VOICEBOX_REFERENCE_TEXT }}
       VOICEBOX_MODEL_SIZE: "1.7B"
       PYTHON_EXECUTABLE: python
+      APPROVAL_TTL_HOURS: "72"
+      APPROVAL_ID: ${{ github.event.client_payload.approval_id || '' }}
     steps:
       - name: Record total job budget start
         run: echo "AUTOMATION_STARTED_AT_MS=$(date +%s%3N)" >> "$GITHUB_ENV"
@@ -59,8 +63,12 @@ jobs:
           cache: npm
       - name: Install and check TypeScript modules
         run: npm ci && npm run typecheck:automation
+      - name: Process an approved or rejected review
+        if: github.event_name == 'repository_dispatch' || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.operation == 'production')
+        id: approval
+        run: npm run approval:process
       - name: Validate provider credentials without publishing
-        if: github.event_name == 'workflow_dispatch' && inputs.operation == 'production'
+        if: github.event_name == 'workflow_dispatch' && inputs.operation == 'production' && steps.approval.outputs.handled != 'true'
         run: npm run diagnose:credentials
       - name: Back up and reset Sheet with niche drafts
         if: github.event_name == 'workflow_dispatch' && inputs.operation == 'reset_sheet_drafts'
@@ -111,7 +119,7 @@ jobs:
           include-hidden-files: true
           retention-days: 14
       - name: Check Sheet control and eligibility before expensive setup
-        if: github.event_name != 'workflow_dispatch' || inputs.operation == 'production'
+        if: github.event_name != 'repository_dispatch' && steps.approval.outputs.handled != 'true' && (github.event_name != 'workflow_dispatch' || inputs.operation == 'production')
         id: gate
         run: node --import tsx src/automation/gate.ts
       - uses: actions/setup-python@v5

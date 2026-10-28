@@ -25,6 +25,9 @@ const progressSchema: z.ZodType<Progress> = z
     }),
     status: z.enum([
       "Processing",
+      "AwaitingApproval",
+      "ApprovalExpired",
+      "Rejected",
       "Completed",
       "Failed",
       "Partial",
@@ -105,6 +108,14 @@ const progressSchema: z.ZodType<Progress> = z
         notification: z.enum(["pending", "sent", "failed"]),
       })
       .optional(),
+    approval: z
+      .object({
+        id: z.string().min(1),
+        status: z.enum(["pending", "approved", "rejected", "expired"]),
+        previewKey: z.string().min(1),
+        expiresAt: z.string().min(1),
+      })
+      .optional(),
     publications: z.array(
       z.discriminatedUnion("state", [
         z.object({
@@ -137,6 +148,7 @@ const progressSchema: z.ZodType<Progress> = z
       sources,
       primitiveReviews,
       primitiveReviewUrl,
+      approval,
       ...rest
     }) => ({
       ...rest,
@@ -144,6 +156,7 @@ const progressSchema: z.ZodType<Progress> = z
       ...(sources === undefined ? {} : { sources }),
       ...(primitiveReviews === undefined ? {} : { primitiveReviews }),
       ...(primitiveReviewUrl === undefined ? {} : { primitiveReviewUrl }),
+      ...(approval === undefined ? {} : { approval }),
       ...(journal === undefined ? {} : { journal }),
       ...(finalization === undefined ? {} : { finalization }),
     }),

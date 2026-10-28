@@ -10,12 +10,16 @@ export const stages = [
   "captions",
   "rendering",
   "quality",
+  "approval",
   "publishing",
   "cleanup",
 ] as const;
 export type Stage = (typeof stages)[number];
 export type JobStatus =
   | "Processing"
+  | "AwaitingApproval"
+  | "ApprovalExpired"
+  | "Rejected"
   | "Completed"
   | "Failed"
   | "Partial"
@@ -235,6 +239,19 @@ export interface RenderedVideo {
   fps: number;
   grade: number;
 }
+export type ApprovalStatus = "approved" | "rejected";
+export interface ApprovalSummary {
+  id: string;
+  status: "pending" | "expired" | ApprovalStatus;
+  previewKey: string;
+  expiresAt: string;
+}
+export interface ApprovalPackage extends ApprovalSummary {
+  status: ApprovalStatus;
+  progress: Progress;
+  plan: ContentPlan;
+  video: RenderedVideo;
+}
 export type Publication =
   | { platform: Platform; state: "Published"; id: string; url: string }
   | {
@@ -286,11 +303,20 @@ export interface Progress {
   primitiveReviewUrl?: string | undefined;
   journal?: PublicationJournal;
   finalization?: Finalization;
+  approval?: ApprovalSummary;
 }
 export type Outcome =
   | { state: "NoWork" | "Paused"; detail: string }
   | {
-      state: "Completed" | "Failed" | "Partial" | "Cancelled" | "Interrupted";
+      state:
+        | "AwaitingApproval"
+        | "ApprovalExpired"
+        | "Rejected"
+        | "Completed"
+        | "Failed"
+        | "Partial"
+        | "Cancelled"
+        | "Interrupted";
       progress: Progress;
       notification: string;
       operationalSuccess: boolean;

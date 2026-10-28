@@ -20,6 +20,13 @@ A job with successful publications on fewer than all required platforms. It is n
 
 A persistent stop on further task processing after a failure, awaiting user action.
 
+## Publication approval
+
+A durable human decision made after generation and automated quality checks but
+before any social provider is contacted. `AwaitingApproval` is a healthy open
+job state, not completion or pipeline failure. Rejection is recoverable and
+must never cause a social upload.
+
 ## Narration
 
 The spoken content of a video, generated from the task or supplied directly. It uses one English voice identity and targets roughly 60 seconds.
