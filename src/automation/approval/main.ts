@@ -68,9 +68,21 @@ export async function main() {
           publisher.publish(video, plan, workspace, record, journal),
         save: (progress) => sheets.save(progress),
         finish: async (approval, status) => {
-          const reviewCleanup = await approvals.finish(approval, status);
-          const publicationCleanup = await publisher.cleanup();
-          return [...reviewCleanup, ...publicationCleanup];
+          const cleanup: string[] = [];
+          const errors: string[] = [];
+          for (const [label, operation] of [
+            ["approval preview", () => approvals.finish(approval, status)],
+            ["publication staging", () => publisher.cleanup()],
+          ] as const) {
+            try {
+              cleanup.push(...(await operation()));
+            } catch (error) {
+              errors.push(`${label}: ${message(error)}`);
+            }
+          }
+          if (errors.length)
+            throw new Error(`Cleanup failed: ${errors.join("; ")}`);
+          return cleanup;
         },
         pause: (reason) => sheets.pause(redact(reason, secrets)),
         notify: (progress) =>
