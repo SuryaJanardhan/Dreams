@@ -9,14 +9,12 @@ const headers = {
   apikey: serviceKey,
   "Content-Type": "application/json",
 };
-const pageHeaders = {
+const commonPageHeaders = {
   "Content-Type": "text/html; charset=utf-8",
   "Cache-Control": "no-store, max-age=0",
   "Referrer-Policy": "no-referrer",
   "X-Content-Type-Options": "nosniff",
   "X-Frame-Options": "DENY",
-  "Content-Security-Policy":
-    "default-src 'none'; media-src 'self'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
 };
 
 type ReviewRow = {
@@ -36,11 +34,65 @@ function escapeHtml(value: string) {
     .replaceAll("'", "&#39;");
 }
 
-function page(title: string, body: string, status = 200) {
+function page(title: string, body: string, status = 200, script = false) {
   return new Response(
-    `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title><style>body{margin:0;background:#f7f7f4;color:#151515;font:16px/1.5 Arial,sans-serif}.wrap{max-width:720px;margin:32px auto;padding:24px}.card{background:#fff;border:1px solid #ddd;border-radius:14px;padding:24px;box-shadow:0 8px 30px #0000000c}video{display:block;width:min(100%,360px);max-height:640px;margin:20px auto;background:#111;border-radius:10px}.actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}.button{border:0;border-radius:8px;padding:14px 22px;color:#fff;font-weight:700;cursor:pointer}.approve{background:#3f8f62}.reject{background:#cf4e46}.yellow{height:6px;background:#e7c536;border-radius:8px;margin-bottom:18px}.muted{color:#666;font-size:14px}</style></head><body><main class="wrap"><div class="card"><div class="yellow"></div>${body}</div></main></body></html>`,
-    { status, headers: pageHeaders },
+    `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title><style>body{margin:0;background:#f7f7f4;color:#151515;font:16px/1.5 Arial,sans-serif}.wrap{max-width:720px;margin:32px auto;padding:24px}.card{background:#fff;border:1px solid #ddd;border-radius:14px;padding:24px;box-shadow:0 8px 30px #0000000c}video{display:block;width:min(100%,360px);max-height:640px;margin:20px auto;background:#111;border-radius:10px}.actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}.button{border:0;border-radius:8px;padding:14px 22px;color:#fff;font-weight:700;cursor:pointer}.approve{background:#3f8f62}.reject{background:#cf4e46}.yellow{height:6px;background:#e7c536;border-radius:8px;margin-bottom:18px}.muted{color:#666;font-size:14px}[hidden]{display:none!important}</style>${script ? '<script src="?asset=review.js" defer></script>' : ""}</head><body><main class="wrap"><div class="card"><div class="yellow"></div>${body}</div></main></body></html>`,
+    {
+      status,
+      headers: {
+        ...commonPageHeaders,
+        "Content-Security-Policy": `default-src 'none'; media-src 'self'; style-src 'unsafe-inline'; ${script ? "script-src 'self'; connect-src 'self';" : ""} form-action 'self'; base-uri 'none'; frame-ancestors 'none'`,
+      },
+    },
   );
+}
+
+const reviewScript = `(() => {
+  const fragment = new URLSearchParams(location.hash.slice(1));
+  const token = fragment.get("token") || "";
+  const intent = fragment.get("intent") || "";
+  history.replaceState(null, "", location.pathname);
+  const title = document.getElementById("title");
+  const message = document.getElementById("message");
+  const video = document.getElementById("preview");
+  const decision = document.getElementById("decision");
+  const tokenInput = document.getElementById("token");
+  const approve = document.getElementById("approve");
+  const reject = document.getElementById("reject");
+  const expires = document.getElementById("expires");
+  const body = new FormData();
+  body.set("action", "preview");
+  body.set("token", token);
+  fetch(location.pathname, { method: "POST", body, credentials: "omit" })
+    .then(async (response) => {
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Review unavailable");
+      title.textContent = data.idea;
+      message.textContent = "No platform has received this video yet.";
+      video.src = data.previewUrl;
+      video.hidden = false;
+      tokenInput.value = token;
+      approve.textContent = intent === "approve" ? "Confirm approval" : "Approve publishing";
+      reject.textContent = intent === "reject" ? "Confirm rejection" : "Reject";
+      decision.hidden = false;
+      expires.textContent = "Single-use review expires " + data.expiresAt + ".";
+    })
+    .catch((error) => {
+      title.textContent = "Review unavailable";
+      message.textContent = error.message;
+    });
+})();`;
+
+function json(value: unknown, status = 200) {
+  return new Response(JSON.stringify(value), {
+    status,
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store, max-age=0",
+      "Referrer-Policy": "no-referrer",
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
 }
 
 async function sha256(value: string) {
@@ -104,32 +156,33 @@ async function dispatch(id: string) {
     throw new Error(`GitHub dispatch failed with status ${response.status}`);
 }
 
-async function show(requestUrl: URL) {
-  const token = requestUrl.searchParams.get("token") ?? "";
-  const row = await findPending(token);
-  if (!row)
-    return page(
-      "Review unavailable",
-      "<h1>Review unavailable</h1><p>This link is invalid or has already been used.</p>",
-      404,
-    );
-  if (new Date(row.expires_at).getTime() <= Date.now())
-    return page(
-      "Review expired",
-      "<h1>Review expired</h1><p>This video was not published. Generate a new review request from the Sheet.</p>",
-      410,
-    );
-  const preview = await signedPreview(row.preview_key, row.expires_at);
-  const idea = row.payload.progress?.task?.idea ?? "Generated video";
-  const intent = requestUrl.searchParams.get("intent");
+function show() {
   return page(
-    `Review — ${idea}`,
-    `<h1>${escapeHtml(idea)}</h1><p>No platform has received this video yet.</p><video controls preload="metadata" src="${escapeHtml(preview)}"></video><form method="post"><input type="hidden" name="token" value="${escapeHtml(token)}"><div class="actions"><button class="button approve" name="action" value="approve" type="submit">${intent === "approve" ? "Confirm approval" : "Approve publishing"}</button><button class="button reject" name="action" value="reject" type="submit">${intent === "reject" ? "Confirm rejection" : "Reject"}</button></div></form><p class="muted">The link is single-use and expires ${escapeHtml(row.expires_at)}. Approval publishes to YouTube, Instagram and Facebook.</p>`,
+    "Secure video review",
+    '<h1 id="title">Loading secure review…</h1><p id="message">Checking this single-use link.</p><video id="preview" controls preload="metadata" hidden></video><form id="decision" method="post" hidden><input id="token" type="hidden" name="token"><div class="actions"><button id="approve" class="button approve" name="action" value="approve" type="submit">Approve publishing</button><button id="reject" class="button reject" name="action" value="reject" type="submit">Reject</button></div></form><p id="expires" class="muted"></p>',
+    200,
+    true,
   );
 }
 
-async function decide(request: Request) {
-  const form = await request.formData();
+async function preview(form: FormData) {
+  const token = String(form.get("token") ?? "");
+  const row = await findPending(token);
+  if (!row)
+    return json(
+      { error: "This link is invalid or has already been used." },
+      404,
+    );
+  if (new Date(row.expires_at).getTime() <= Date.now())
+    return json({ error: "Review expired; nothing was published." }, 410);
+  return json({
+    idea: row.payload.progress?.task?.idea ?? "Generated video",
+    previewUrl: await signedPreview(row.preview_key, row.expires_at),
+    expiresAt: row.expires_at,
+  });
+}
+
+async function decide(form: FormData) {
   const token = String(form.get("token") ?? "");
   const action = String(form.get("action") ?? "");
   if (action !== "approve" && action !== "reject")
@@ -199,8 +252,24 @@ Deno.serve(async (request) => {
         "<h1>Review service is not configured</h1>",
         503,
       );
-    if (request.method === "GET") return await show(new URL(request.url));
-    if (request.method === "POST") return await decide(request);
+    if (request.method === "GET") {
+      const url = new URL(request.url);
+      if (url.searchParams.get("asset") === "review.js")
+        return new Response(reviewScript, {
+          headers: {
+            "Content-Type": "text/javascript; charset=utf-8",
+            "Cache-Control": "no-store, max-age=0",
+            "X-Content-Type-Options": "nosniff",
+          },
+        });
+      return show();
+    }
+    if (request.method === "POST") {
+      const form = await request.formData();
+      return String(form.get("action") ?? "") === "preview"
+        ? await preview(form)
+        : await decide(form);
+    }
     return new Response("Method not allowed", { status: 405 });
   } catch {
     return page(

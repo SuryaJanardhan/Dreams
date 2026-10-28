@@ -450,18 +450,30 @@ export class Sheets {
     });
     await this.write(data);
   }
-  async intake() {
-    const control = await this.read("AutomationControl", "A1:B2");
-    const paused = control[0]?.[1]?.toUpperCase();
-    if (paused === "TRUE")
-      return {
-        kind: "paused" as const,
-        detail: control[1]?.[1] || "User intervention required",
-      };
-    if (paused !== "FALSE")
+  private async control() {
+    const rows = await this.read("AutomationControl", "A1:B2");
+    const paused = rows[0]?.[1]?.toUpperCase();
+    if (paused !== "TRUE" && paused !== "FALSE")
       throw new Error(
         "AutomationControl PAUSED must be TRUE or FALSE; refusing work",
       );
+    return {
+      paused: paused === "TRUE",
+      reason: rows[1]?.[1] || "User intervention required",
+    };
+  }
+  async assertRunning() {
+    const control = await this.control();
+    if (control.paused)
+      throw new Error(`Pipeline is PAUSED: ${control.reason}`);
+  }
+  async intake() {
+    const control = await this.control();
+    if (control.paused)
+      return {
+        kind: "paused" as const,
+        detail: control.reason,
+      };
     const rows = await this.read(this.config.SHEET_TAB, "A2:AZ");
     const cell = (row: string[], key: string) => {
       const index = this.fields[key];

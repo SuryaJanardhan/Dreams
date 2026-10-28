@@ -27,10 +27,14 @@ Approval tokens are random 256-bit bearer values. Only their SHA-256 hashes are
 stored. They are single-use and expire after 72 hours. The approval table has
 RLS enabled with no client policies.
 
+The raw token is placed in the URL fragment, which browsers do not send in HTTP
+requests or access logs. The review page transfers it in a POST body for preview
+lookup and the final decision.
+
 The scheduled control step sends one reminder after 24 hours. The reminder
 rotates the bearer token so the first email link becomes invalid. At 72 hours,
-the request becomes `ApprovalExpired`, its preview is removed and nothing is
-published.
+the link stops accepting decisions. The next twice-daily maintenance run marks
+the request `ApprovalExpired`, removes its preview and publishes nothing.
 
 ## Deployment
 

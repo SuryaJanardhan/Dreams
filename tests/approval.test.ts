@@ -153,6 +153,18 @@ test("rejection records the decision and never calls a social publisher", async 
   assert.ok(!rejected.events.includes("pause"));
 });
 
+test("rejection confirmation email failure never pauses healthy scheduling", async () => {
+  const rejected = fixture(approval("rejected"));
+  rejected.deps.notify = async () => {
+    throw new Error("SMTP unavailable");
+  };
+  const result = await runApprovalDecision(rejected.deps, "approval-1");
+  assert.equal(result.state, "Rejected");
+  assert.ok(!rejected.events.includes("publish"));
+  assert.ok(!rejected.events.includes("pause"));
+  assert.match(result.notification, /failed/);
+});
+
 test("no decided review is a successful no-op", async () => {
   const empty = fixture(null);
   const result = await runApprovalDecision(empty.deps);
@@ -209,9 +221,11 @@ test("review request stores only a token hash before emailing safe GET links", a
   );
   links = { reviewUrl: request.reviewUrl, previewUrl: request.previewUrl };
   assert.equal(request.approval.status, "pending");
-  assert.ok(links?.reviewUrl.includes("/functions/v1/review-approval?token="));
+  assert.ok(links?.reviewUrl.includes("/functions/v1/review-approval#token="));
   assert.ok(links?.previewUrl.startsWith("https://project.supabase.co/"));
-  const token = new URL(links?.reviewUrl ?? "").searchParams.get("token");
+  const reviewUrl = new URL(links?.reviewUrl ?? "");
+  assert.equal(reviewUrl.search, "");
+  const token = new URLSearchParams(reviewUrl.hash.slice(1)).get("token");
   assert.ok(token);
   assert.ok(!http.insertedBody.includes(token ?? ""));
   assert.ok(http.insertedBody.includes('"status":"AwaitingApproval"'));

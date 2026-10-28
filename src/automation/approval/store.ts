@@ -79,6 +79,9 @@ const rowSchema = z.object({
   expires_at: z.string().min(1),
   payload: payloadSchema,
 });
+const claimRowSchema = rowSchema.extend({
+  claimed_at: z.string().nullable(),
+});
 const pendingRowSchema = z.object({
   id: z.string().min(1),
   token_hash: z.string().length(64),
@@ -197,7 +200,7 @@ export class ApprovalStore {
           previewKey,
           this.config.APPROVAL_TTL_HOURS * 3600,
         ),
-        reviewUrl: `${this.config.SUPABASE_URL}/functions/v1/review-approval?token=${encodeURIComponent(token)}`,
+        reviewUrl: `${this.config.SUPABASE_URL}/functions/v1/review-approval#token=${encodeURIComponent(token)}`,
       };
     } catch (error) {
       await Promise.allSettled([
@@ -278,7 +281,7 @@ export class ApprovalStore {
       await notify(candidate.payload.progress, {
         approval: summary,
         previewUrl: await this.signPreview(candidate.preview_key, remaining),
-        reviewUrl: `${this.config.SUPABASE_URL}/functions/v1/review-approval?token=${encodeURIComponent(token)}`,
+        reviewUrl: `${this.config.SUPABASE_URL}/functions/v1/review-approval#token=${encodeURIComponent(token)}`,
         reminder: true,
       });
       return true;
@@ -342,26 +345,37 @@ export class ApprovalStore {
   }
 
   async claim(id?: string): Promise<ApprovalPackage | null> {
-    const selection = id
-      ? `?id=eq.${encodeURIComponent(id)}&status=in.(approved,rejected)&select=id,status,preview_key,expires_at,payload&limit=1`
-      : "?status=in.(approved,rejected)&select=id,status,preview_key,expires_at,payload&order=decided_at.asc&limit=1";
-    const candidates = await this.http.json(
-      this.rest(selection),
-      z.array(rowSchema),
-      { headers: this.headers() },
-    );
-    const candidate = candidates[0];
+    const fields = "id,status,preview_key,expires_at,payload,claimed_at";
+    const idFilter = id ? `id=eq.${encodeURIComponent(id)}&` : "";
+    const read = (claimFilter: string) =>
+      this.http.json(
+        this.rest(
+          `?${idFilter}status=in.(approved,rejected)&finished_at=is.null&${claimFilter}&select=${fields}&order=decided_at.asc&limit=1`,
+        ),
+        z.array(claimRowSchema),
+        { headers: this.headers() },
+      );
+    const fresh = await read("claimed_at=is.null");
+    const staleBefore = new Date(
+      this.now().getTime() - 2 * 3600000,
+    ).toISOString();
+    const candidate =
+      fresh[0] ??
+      (await read(`claimed_at=lt.${encodeURIComponent(staleBefore)}`))[0];
     if (!candidate) return null;
+    const claimGuard = candidate.claimed_at
+      ? `claimed_at=eq.${encodeURIComponent(candidate.claimed_at)}`
+      : "claimed_at=is.null";
     const claimed = await this.http.json(
       this.rest(
-        `?id=eq.${encodeURIComponent(candidate.id)}&status=eq.${candidate.status}&select=id`,
+        `?id=eq.${encodeURIComponent(candidate.id)}&status=eq.${candidate.status}&finished_at=is.null&${claimGuard}&select=id`,
       ),
       z.array(z.object({ id: z.string() })),
       {
         method: "PATCH",
         headers: { ...this.headers(), Prefer: "return=representation" },
         body: JSON.stringify({
-          status: "processing",
+          claimed_at: this.now().toISOString(),
           updated_at: this.now().toISOString(),
         }),
       },
@@ -403,6 +417,7 @@ export class ApprovalStore {
         headers: this.headers(),
         body: JSON.stringify({
           status,
+          claimed_at: null,
           updated_at: this.now().toISOString(),
           finished_at: this.now().toISOString(),
         }),

@@ -57,14 +57,29 @@ export async function runApprovalDecision(
     progress.lastCompleted = "approval";
     progress.remarks =
       "Publishing rejected from the secure review page. No social upload was attempted.";
-    progress.cleanup.push(...(await deps.finish(approval, "rejected")));
-    await deps.save(progress);
-    await deps.notify(progress);
+    let safe = true;
+    let notification = "sent";
+    try {
+      await deps.save(progress);
+      progress.cleanup.push(...(await deps.finish(approval, "rejected")));
+    } catch (error) {
+      safe = false;
+      progress.remarks += ` Rejection finalization will be reclaimed: ${message(error)}`;
+    }
+    if (safe) {
+      try {
+        await deps.notify(progress);
+      } catch (error) {
+        notification = `failed: ${message(error)}`;
+        progress.remarks += ` Rejection confirmation email ${notification}`;
+        await deps.save(progress).catch(() => {});
+      }
+    }
     return {
       state: "Rejected",
       progress,
-      notification: "sent",
-      operationalSuccess: true,
+      notification,
+      operationalSuccess: safe,
     };
   }
 

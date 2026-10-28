@@ -27,6 +27,7 @@ export async function main() {
     const approvals = new ApprovalStore(config, http);
     const publisher = new Publisher(config, http);
     await sheets.prepare();
+    await sheets.assertRunning();
     if (!process.env.APPROVAL_ID) {
       const expired = await approvals.expireOne();
       if (expired) {
@@ -96,7 +97,8 @@ export async function main() {
         operationalSuccess: result.operationalSuccess,
       }),
     );
-    if (!result.operationalSuccess) process.exitCode = 1;
+    if (!result.operationalSuccess && result.state !== "Rejected")
+      process.exitCode = 1;
   } catch (error) {
     await output(false).catch(() => {});
     console.error(redact(message(error), secrets));

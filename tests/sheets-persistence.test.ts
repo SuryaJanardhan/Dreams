@@ -6,7 +6,10 @@ import { Http, type Request } from "../src/automation/operations/http.js";
 import { loadSheetsConfig } from "../src/automation/operations/config.js";
 class SheetFixture extends Http {
   writes: string[] = [];
-  constructor(readonly interrupted = false) {
+  constructor(
+    readonly interrupted = false,
+    readonly paused = false,
+  ) {
     super(() => new AbortController().signal);
   }
   override async json<T>(url: string, schema: z.ZodType<T>): Promise<T> {
@@ -14,8 +17,8 @@ class SheetFixture extends Http {
     const value = decoded.includes("AutomationControl")
       ? {
           values: [
-            ["PAUSED", "FALSE"],
-            ["REASON", ""],
+            ["PAUSED", this.paused ? "TRUE" : "FALSE"],
+            ["REASON", this.paused ? "incident" : ""],
           ],
         }
       : decoded.includes("A2:AZ")
@@ -55,6 +58,20 @@ class SheetFixture extends Http {
     return new Response("{}");
   }
 }
+test("approval processing obeys the persistent global pause", async () => {
+  const config = loadSheetsConfig({
+    GOOGLE_SHEET_ID: "fixture",
+    GOOGLE_CREDENTIALS: JSON.stringify({
+      client_email: "test@example.com",
+      private_key: "fixture",
+    }),
+  });
+  const sheets = new Sheets(config, new SheetFixture(false, true), {
+    getAccessToken: async () => "fixture",
+  });
+  await sheets.prepare();
+  await assert.rejects(sheets.assertRunning(), /Pipeline is PAUSED: incident/);
+});
 test("Task ID persistence failure is an infrastructure error, not an invalid content row", async () => {
   const config = loadSheetsConfig({
     GOOGLE_SHEET_ID: "fixture",
