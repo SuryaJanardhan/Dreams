@@ -4,7 +4,16 @@ import {
   gradeContent,
   parseGroundedJson,
   requireExplanationQuality,
+  safeIdentifier,
 } from "../src/automation/content/index.js";
+test("AI beat identifiers are normalized without changing content", () => {
+  assert.equal(
+    safeIdentifier("beat_1: shared purpose"),
+    "beat-1-shared-purpose",
+  );
+  assert.equal(safeIdentifier("  failure mode  "), "failure-mode");
+  assert.equal(safeIdentifier("beat-3"), "beat-3");
+});
 test("supplied narration preserves punctuation and wording exactly, not only normalized tokens", () => {
   const text = Array.from({ length: 140 }, () => "request").join(" ") + ".";
   const task = {

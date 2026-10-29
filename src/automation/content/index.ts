@@ -178,6 +178,21 @@ export class Gemini {
     return schema.parse(input);
   }
 }
+export function safeIdentifier(value: string): string {
+  return value
+    .trim()
+    .replace(/[^a-zA-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+const identifierSchema = z
+  .string()
+  .transform(safeIdentifier)
+  .pipe(
+    z
+      .string()
+      .min(1)
+      .regex(/^[a-zA-Z0-9-]+$/),
+  );
 const planSchema = z.object({
   type: z.enum(contentTypes),
   title: z.string().min(1).max(100),
@@ -202,7 +217,7 @@ const planSchema = z.object({
   beats: z
     .array(
       z.object({
-        id: z.string().regex(/^[a-zA-Z0-9-]+$/),
+        id: identifierSchema,
         text: z.string().min(1),
         purpose: z.string().min(5).max(240),
       }),
@@ -289,7 +304,7 @@ export function createContent(config: Config, gemini: Gemini) {
 ${task.narration ? `Use exactly this supplied narration without rewriting it: ${JSON.stringify(task.narration)}` : "Write a single continuous spoken narration of 105–155 words. Let the explanation end naturally; do not pad or rush it to hit an exact duration."}
 ${task.type ? `The Sheet explicitly sets type=${task.type}; preserve it.` : `Classify type as one of ${contentTypes.join(", ")}.`} Follow the matching structure: question = problem, naive understanding, failure, correct model; comparison = shared purpose, essential difference, concrete example, practical choice; interview = exact prompt, reasoning, scalable answer, tradeoff; scenario = initial state, triggering event, consequence, resolution.
 Keep simple natural Indian English and explain like a knowledgeable friend. Spell acronyms out on first use. Open with the exact confusion or problem. Carry one concrete example through the explanation. No greeting, dramatic social hook, outro, engagement bait, stage direction, markdown, heading, fake personal experience, or unsupported factual claim.
-Output JSON {type,title,narration,beats:[{id,text,purpose}],copies:{youtube:{title,description},instagram:{title,description},facebook:{title,description}}}. Use 3–8 beats whose text partitions EXACTLY the narration in order. Each purpose states the causal idea that must become visible. Write distinct platform descriptions but preserve the same factual meaning. ${error ? `Previous validation failed; fix it: ${error}` : ""}`,
+Output JSON {type,title,narration,beats:[{id,text,purpose}],copies:{youtube:{title,description},instagram:{title,description},facebook:{title,description}}}. Beat IDs must use only letters, numbers and hyphens, for example beat-1. Use 3–8 beats whose text partitions EXACTLY the narration in order. Each purpose states the causal idea that must become visible. Write distinct platform descriptions but preserve the same factual meaning. ${error ? `Previous validation failed; fix it: ${error}` : ""}`,
         planSchema,
       );
       const structuralGrade = gradeContent(plan, task);
