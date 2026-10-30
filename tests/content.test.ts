@@ -14,6 +14,51 @@ test("AI beat identifiers are normalized without changing content", () => {
   assert.equal(safeIdentifier("  failure mode  "), "failure-mode");
   assert.equal(safeIdentifier("beat-3"), "beat-3");
 });
+
+test("natural narration tolerates bounded model variance around the ideal target", () => {
+  const words = Array.from({ length: 175 }, () => "request");
+  const narration = words.join(" ");
+  const plan = {
+    type: "question" as const,
+    title: "API",
+    narration,
+    copies: {
+      youtube: { title: "API", description: "API" },
+      instagram: { title: "API", description: "API" },
+      facebook: { title: "API", description: "API" },
+    },
+    beats: [
+      {
+        id: "one",
+        text: words.slice(0, 60).join(" "),
+        purpose: "Show the first request state",
+      },
+      {
+        id: "two",
+        text: words.slice(60, 120).join(" "),
+        purpose: "Show the transition mechanism",
+      },
+      {
+        id: "three",
+        text: words.slice(120).join(" "),
+        purpose: "Show the resulting system state",
+      },
+    ],
+  };
+  assert.equal(
+    gradeContent(plan, {
+      id: "fixture",
+      row: 2,
+      idea: "API",
+      description: "",
+      narration: "",
+      type: "",
+      audience: "",
+      sourceUrls: [],
+    }),
+    80,
+  );
+});
 test("supplied narration preserves punctuation and wording exactly, not only normalized tokens", () => {
   const text = Array.from({ length: 140 }, () => "request").join(" ") + ".";
   const task = {

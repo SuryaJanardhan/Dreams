@@ -263,9 +263,9 @@ export function gradeContent(
   task: Task,
 ): number {
   const words = plan.narration.split(/\s+/).filter(Boolean).length;
-  if (words < 90 || words > 165)
+  if (words < 80 || words > 180)
     throw new Error(
-      "Narration word count cannot reasonably fit the selected sixty-second target",
+      `Narration word count ${words} cannot reasonably fit the selected sixty-second target`,
     );
   let score = 100;
   if (words < 105 || words > 155) score -= 20;
