@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { google } from "googleapis";
 import { z } from "zod";
 import { loadSheetsConfig } from "./operations/config.js";
+import { column } from "./sheets/index.js";
 
 const valuesSchema = z.object({
   values: z
@@ -92,8 +93,9 @@ const headers = [
 ];
 
 async function main() {
-  if (process.argv[2] !== "reset-drafts")
-    throw new Error("Expected explicit reset-drafts operation");
+  const operation = process.argv[2];
+  if (!operation || !["reset-drafts", "resume-retry"].includes(operation))
+    throw new Error("Expected explicit reset-drafts or resume-retry operation");
   const config = loadSheetsConfig();
   const auth = new google.auth.GoogleAuth({
     credentials: {
@@ -121,6 +123,74 @@ async function main() {
     const value: unknown = await response.json();
     return valuesSchema.parse(value).values ?? [];
   };
+  if (operation === "resume-retry") {
+    const rows = (await read(config.SHEET_TAB, "A1:AZ")).map((row) =>
+      row.map(String),
+    );
+    const header = (rows[0] ?? []).map((value) => value.trim().toLowerCase());
+    const index = (name: string) => {
+      const found = header.indexOf(name.toLowerCase());
+      if (found < 0) throw new Error(`Missing Sheet column ${name}`);
+      return found;
+    };
+    const statusIndex = index("Status");
+    const linkIndexes = ["YT Link", "Insta Link", "FB Link"].map(index);
+    const failedOffset = rows
+      .slice(1)
+      .findIndex(
+        (row) => (row[statusIndex] ?? "").trim().toLowerCase() === "failed",
+      );
+    const updates: Array<{ range: string; values: string[][] }> = [
+      {
+        range: range("AutomationControl", "A1:B2"),
+        values: [
+          ["PAUSED", "FALSE"],
+          ["REASON", ""],
+        ],
+      },
+    ];
+    let retryRow: number | undefined;
+    if (failedOffset >= 0) {
+      retryRow = failedOffset + 2;
+      const row = rows[failedOffset + 1] ?? [];
+      if (linkIndexes.some((cellIndex) => (row[cellIndex] ?? "").trim()))
+        throw new Error(
+          `Refusing to requeue row ${retryRow}: it already contains a social link`,
+        );
+      const resetColumns = [
+        "Status",
+        "Job ID",
+        "Stage",
+        "Last Completed",
+        "Started At",
+        "Timestamp",
+        "Remarks",
+        "Grades",
+        "Cleanup",
+        "Progress JSON",
+      ];
+      for (const name of resetColumns) {
+        const cellIndex = index(name);
+        updates.push({
+          range: range(config.SHEET_TAB, `${column(cellIndex)}${retryRow}`),
+          values: [[name === "Status" ? "Not Posted" : ""]],
+        });
+      }
+    }
+    const response = await fetch(`${base}/values:batchUpdate`, {
+      method: "POST",
+      headers: requestHeaders,
+      body: JSON.stringify({ valueInputOption: "RAW", data: updates }),
+    });
+    if (!response.ok)
+      throw new Error(`Sheet resume/retry write failed: ${response.status}`);
+    console.log(
+      retryRow
+        ? `Automation unpaused; failed row ${retryRow} requeued safely`
+        : "Automation unpaused; no failed row required requeueing",
+    );
+    return;
+  }
   const backup = {
     createdAt: new Date().toISOString(),
     spreadsheetId: config.GOOGLE_SHEET_ID,

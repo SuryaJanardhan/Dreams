@@ -49,6 +49,7 @@
     "approval:process": "node --import tsx src/automation/approval/main.ts",
     "diagnose:credentials": "node --import tsx src/automation/credential-diagnostics.ts",
     "admin:reset-sheet-drafts": "node --import tsx src/automation/sheet-admin.ts reset-drafts",
+    "admin:resume-retry": "node --import tsx src/automation/sheet-admin.ts resume-retry",
     "admin:social-inventory": "node --import tsx src/automation/social-admin.ts inventory",
     "admin:facebook-rebrand-hide": "node --import tsx src/automation/social-admin.ts facebook-rebrand-hide",
     "admin:youtube-rebrand-unlist": "node --import tsx src/automation/social-admin.ts youtube-rebrand-unlist",

@@ -12,6 +12,7 @@ on:
         type: choice
         options:
           - production
+          - resume_retry
           - reset_sheet_drafts
           - social_inventory
           - facebook_rebrand_hide
@@ -73,6 +74,9 @@ jobs:
       - name: Back up and reset Sheet with niche drafts
         if: github.event_name == 'workflow_dispatch' && inputs.operation == 'reset_sheet_drafts'
         run: npm run admin:reset-sheet-drafts
+      - name: Unpause and safely requeue first failed Sheet row
+        if: github.event_name == 'workflow_dispatch' && inputs.operation == 'resume_retry'
+        run: npm run admin:resume-retry
       - name: Upload Sheet backup
         if: always() && github.event_name == 'workflow_dispatch' && inputs.operation == 'reset_sheet_drafts'
         uses: actions/upload-artifact@v4
