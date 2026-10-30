@@ -15,6 +15,21 @@ import {
   compileTimeline,
   evaluateTimelineAt,
 } from "../src/automation/rendering/timeline.js";
+import {
+  safeVisualBox,
+  safeVisualIdentifier,
+} from "../src/automation/visual-planning/index.js";
+
+test("AI visual identifiers and undersized boxes normalize deterministically", () => {
+  assert.equal(safeVisualIdentifier("JWT_Session Box"), "jwt-session-box");
+  assert.equal(safeVisualIdentifier("1"), "item-1");
+  assert.deepEqual(safeVisualBox({ x: 40.4, y: 80.6, width: 50, height: 24 }), {
+    x: 40,
+    y: 81,
+    width: 80,
+    height: 60,
+  });
+});
 
 const content: ContentPlan = {
   type: "comparison",

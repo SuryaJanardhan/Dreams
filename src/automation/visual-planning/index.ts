@@ -92,22 +92,50 @@ const cameraActions = [
   "follow",
   "return-wide",
 ] as const;
-const boxSchema: z.ZodType<VisualBox> = z
-  .object({
-    x: z.number().int().min(0).max(820),
-    y: z.number().int().min(0).max(1170),
-    width: z.number().int().min(80).max(760),
-    height: z.number().int().min(60).max(560),
-  })
-  .strict()
-  .refine((box) => box.x + box.width <= 900, "Object exceeds scene width")
-  .refine(
-    (box) => box.y + box.height <= 1250,
-    "Object exceeds diagram safe area",
-  );
+export function safeVisualIdentifier(value: string): string {
+  let result = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  if (!/^[a-z]/.test(result)) result = `item-${result}`;
+  if (result.length < 3) result = `${result}-item`;
+  return result.slice(0, 51).replace(/-+$/g, "");
+}
+const identifierSchema = z
+  .string()
+  .transform(safeVisualIdentifier)
+  .pipe(z.string().regex(/^[a-z][a-z0-9-]{1,50}$/));
+export function safeVisualBox(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const input = value as Record<string, unknown>;
+  const numbers = [input.x, input.y, input.width, input.height].map(Number);
+  if (!numbers.every(Number.isFinite)) return value;
+  const x = Math.max(0, Math.min(820, Math.round(numbers[0]!)));
+  const y = Math.max(0, Math.min(1170, Math.round(numbers[1]!)));
+  const width = Math.max(80, Math.min(760, 900 - x, Math.round(numbers[2]!)));
+  const height = Math.max(60, Math.min(560, 1250 - y, Math.round(numbers[3]!)));
+  return { ...input, x, y, width, height };
+}
+const boxSchema: z.ZodType<VisualBox> = z.preprocess(
+  safeVisualBox,
+  z
+    .object({
+      x: z.number().int().min(0).max(820),
+      y: z.number().int().min(0).max(1170),
+      width: z.number().int().min(80).max(760),
+      height: z.number().int().min(60).max(560),
+    })
+    .strict()
+    .refine((box) => box.x + box.width <= 900, "Object exceeds scene width")
+    .refine(
+      (box) => box.y + box.height <= 1250,
+      "Object exceeds diagram safe area",
+    ),
+);
 const primitiveSpecSchema: z.ZodType<PrimitiveSpec> = z
   .object({
-    id: z.string().regex(/^[a-z][a-z0-9-]{2,50}$/),
+    id: identifierSchema,
     label: z.string().min(1).max(80),
     shapes: z
       .array(
@@ -151,7 +179,7 @@ export const visualPlanSchema: z.ZodType<VisualPlan> = z
       .array(
         z
           .object({
-            id: z.string().regex(/^[a-z][a-z0-9-]{1,50}$/),
+            id: identifierSchema,
             kind: z.enum(primitiveKinds),
             label: z.string().min(1).max(60),
             semantic: z.enum(semanticColors),
@@ -161,14 +189,8 @@ export const visualPlanSchema: z.ZodType<VisualPlan> = z
               .array(z.array(z.string().min(1).max(30)).min(1).max(5))
               .max(5)
               .optional(),
-            assetId: z
-              .string()
-              .regex(/^[a-z][a-z0-9-]{1,50}$/)
-              .optional(),
-            primitiveId: z
-              .string()
-              .regex(/^[a-z][a-z0-9-]{2,50}$/)
-              .optional(),
+            assetId: identifierSchema.optional(),
+            primitiveId: identifierSchema.optional(),
           })
           .strict(),
       )
@@ -178,10 +200,10 @@ export const visualPlanSchema: z.ZodType<VisualPlan> = z
       .array(
         z
           .object({
-            id: z.string().regex(/^[a-z][a-z0-9-]{1,60}$/),
-            beatId: z.string().regex(/^[a-zA-Z0-9-]+$/),
+            id: identifierSchema,
+            beatId: identifierSchema,
             action: z.enum(operations),
-            objectIds: z.array(z.string()).min(1).max(7),
+            objectIds: z.array(identifierSchema).min(1).max(7),
             anchor: z.string().min(1).max(60),
             value: z.string().max(120).optional(),
             motion: z.enum(motionPresets),
@@ -189,7 +211,7 @@ export const visualPlanSchema: z.ZodType<VisualPlan> = z
               .array(
                 z
                   .object({
-                    objectId: z.string(),
+                    objectId: identifierSchema,
                     box: boxSchema,
                   })
                   .strict(),
@@ -206,10 +228,10 @@ export const visualPlanSchema: z.ZodType<VisualPlan> = z
       .array(
         z
           .object({
-            id: z.string().regex(/^[a-z][a-z0-9-]{1,60}$/),
-            beatId: z.string().regex(/^[a-zA-Z0-9-]+$/),
+            id: identifierSchema,
+            beatId: identifierSchema,
             action: z.enum(cameraActions),
-            objectIds: z.array(z.string()).min(1).max(7),
+            objectIds: z.array(identifierSchema).min(1).max(7),
             anchor: z.string().min(1).max(60),
             zoom: z.number().min(1).max(1.15),
           })
@@ -220,7 +242,7 @@ export const visualPlanSchema: z.ZodType<VisualPlan> = z
       .array(
         z
           .object({
-            id: z.string().regex(/^[a-z][a-z0-9-]{1,50}$/),
+            id: identifierSchema,
             query: z.string().min(3).max(180),
             purpose: z.string().min(5).max(240),
             requiredFeatures: z.array(z.string().min(2).max(100)).min(1).max(6),
@@ -417,7 +439,7 @@ export function createVisualPlan(config: Config, gemini: Gemini) {
         config.GEMINI_API_KEY_FOR_VISUALS,
         `Create one continuous declarative VisualStory for this vertical technical reel. Topic: ${JSON.stringify(task.idea)}. Content: ${JSON.stringify(content)}. Trusted reusable composite primitives: ${JSON.stringify(promotedPrimitives)}.
 Output JSON {version:2,world:[{id,kind,label,semantic,box:{x,y,width,height},detail?,rows?,assetId?,primitiveId?}],timeline:[{id,beatId,action,objectIds,anchor,value?,motion,layout?:[{objectId,box}]}],camera:[{id,beatId,action,objectIds,anchor,zoom}],assetIntents:[{id,query,purpose,requiredFeatures,sourcePreference:"official-first"}],proposedPrimitives:[{id,label,shapes:[{kind,x,y,width?,height?,text?,semantic}]}]}.
-This is one persistent illustrated world, not separate scenes. Introduce each object once with create, reveal or draw, then preserve its identity until an explicit remove. Never reset the canvas between related beats. Use reflow with destination boxes whenever existing objects must move; nothing may teleport. Use 2–7 visible objects, stable IDs, no overlap and one primary causal motion at a time. Every beat must have at least one action, actions must follow beat order, and the first action must anchor within the first six spoken words.
+This is one persistent illustrated world, not separate scenes. Introduce each object once with create, reveal or draw, then preserve its identity until an explicit remove. Never reset the canvas between related beats. Use reflow with destination boxes whenever existing objects must move; nothing may teleport. Use 2–7 visible objects, stable lowercase kebab-case IDs, no overlap and one primary causal motion at a time. Reuse the exact same normalized object ID in every reference. Every box must be at least 80×60. Every beat must have at least one action, actions must follow beat order, and the first action must anchor within the first six spoken words.
 Use trusted kinds ${primitiveKinds.join(", ")}, actions ${operations.join(", ")}, motion presets ${motionPresets.join(", ")}, and semantic colors ${semanticColors.join(", ")}. Prefer meaningful internal actions: row-insert for databases/tables, queue-advance, lock/unlock, highlight-code, fail/succeed, expire and branch. Transfers need source and destination. Use subtle camera actions only when framing materially improves clarity; zoom must remain 1–1.15.
 Canvas coordinates are 900×1250. The art direction is polished technical SVG illustration with subtle organic black strokes, white space and restrained semantic fills. Avoid generic bordered cards unless the concept is genuinely a code card, table, browser or real image. Use an image only for a real interface/product and provide a matching official-first asset intent. Use composite only when no trusted kind works. Never request humans, avatars, decorative backgrounds, logos, watermarks, arbitrary colors or executable code. Every action and camera anchor must be an exact phrase from its content beat. ${error ? `Repair these validation errors: ${error}` : ""}`,
         visualPlanSchema,

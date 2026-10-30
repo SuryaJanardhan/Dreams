@@ -181,6 +181,7 @@ export class Gemini {
 export function safeIdentifier(value: string): string {
   return value
     .trim()
+    .toLowerCase()
     .replace(/[^a-zA-Z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 }
