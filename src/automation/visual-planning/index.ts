@@ -172,7 +172,77 @@ export function parsePrimitiveSpec(value: unknown) {
   return validatePrimitiveSpec(primitiveSpecSchema.parse(value));
 }
 
-export const visualPlanSchema: z.ZodType<VisualPlan> = z
+function normalizedMotion(action: unknown): MotionPreset {
+  if (["create", "reveal"].includes(String(action))) return "soft-enter";
+  if (action === "draw") return "draw-path";
+  if (action === "transfer") return "travel-path";
+  if (action === "reflow") return "rearrange";
+  if (action === "focus" || action === "dim") return "focus";
+  if (action === "settle") return "settle";
+  if (action === "remove") return "soft-exit";
+  if (
+    [
+      "row-insert",
+      "queue-advance",
+      "lock",
+      "unlock",
+      "highlight-code",
+      "expire",
+      "branch",
+    ].includes(String(action))
+  )
+    return "internal-action";
+  return "state-change";
+}
+function shortAnchor(value: unknown): unknown {
+  if (typeof value !== "string" || value.length <= 60) return value;
+  let result = "";
+  for (const word of value.trim().split(/\s+/)) {
+    const candidate = result ? `${result} ${word}` : word;
+    if (candidate.length > 60) break;
+    result = candidate;
+  }
+  return result || value.slice(0, 60).trim();
+}
+export function normalizeGeneratedVisualPlan(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const root = structuredClone(value) as Record<string, unknown>;
+  if (Array.isArray(root.timeline))
+    root.timeline = root.timeline.map((entry, index) => {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry))
+        return entry;
+      const action = entry as Record<string, unknown>;
+      const motion = motionPresets.includes(action.motion as MotionPreset)
+        ? action.motion
+        : normalizedMotion(action.action);
+      return {
+        ...action,
+        id:
+          typeof action.id === "string" && action.id.trim()
+            ? action.id
+            : `action-${index + 1}`,
+        anchor: shortAnchor(action.anchor),
+        motion,
+      };
+    });
+  if (Array.isArray(root.camera))
+    root.camera = root.camera.map((entry, index) => {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry))
+        return entry;
+      const action = entry as Record<string, unknown>;
+      return {
+        ...action,
+        id:
+          typeof action.id === "string" && action.id.trim()
+            ? action.id
+            : `camera-${index + 1}`,
+        anchor: shortAnchor(action.anchor),
+      };
+    });
+  return root;
+}
+
+const rawVisualPlanSchema = z
   .object({
     version: z.literal(2),
     world: z
@@ -254,6 +324,10 @@ export const visualPlanSchema: z.ZodType<VisualPlan> = z
     proposedPrimitives: z.array(primitiveSpecSchema).max(2),
   })
   .strict();
+export const visualPlanSchema: z.ZodType<VisualPlan> = z.preprocess(
+  normalizeGeneratedVisualPlan,
+  rawVisualPlanSchema,
+);
 
 function overlapRatio(first: VisualBox, second: VisualBox) {
   const width = Math.max(

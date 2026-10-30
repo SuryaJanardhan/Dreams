@@ -7,6 +7,7 @@ import type {
 } from "../src/automation/domain.js";
 import {
   assertRepairScope,
+  normalizeGeneratedVisualPlan,
   parsePrimitiveSpec,
   validateVisualPlan,
   visualPlanSchema,
@@ -29,6 +30,67 @@ test("AI visual identifiers and undersized boxes normalize deterministically", (
     width: 80,
     height: 60,
   });
+});
+
+test("missing action IDs and invented motions are normalized before validation", () => {
+  const raw = {
+    version: 2,
+    world: [
+      {
+        id: "client_box",
+        kind: "client",
+        label: "Client",
+        semantic: "active",
+        box: { x: 10, y: 20, width: 200, height: 40 },
+      },
+      {
+        id: "server_box",
+        kind: "server",
+        label: "Server",
+        semantic: "structure",
+        box: { x: 400, y: 20, width: 200, height: 180 },
+      },
+    ],
+    timeline: [
+      {
+        beatId: "shared",
+        action: "create",
+        objectIds: ["client_box", "server_box"],
+        anchor:
+          "Both move data through a deliberately overlong anchor phrase that exceeds the schema limit",
+        motion: "slide-up",
+      },
+      {
+        beatId: "queue",
+        action: "transfer",
+        objectIds: ["client_box", "server_box"],
+        anchor: "queue",
+        motion: "fly",
+      },
+      {
+        beatId: "stream",
+        action: "focus",
+        objectIds: ["server_box"],
+        anchor: "stream",
+        motion: "zoom",
+      },
+    ],
+    camera: [],
+    assetIntents: [],
+    proposedPrimitives: [],
+  };
+  const parsed = visualPlanSchema.parse(normalizeGeneratedVisualPlan(raw));
+  assert.deepEqual(
+    parsed.timeline.map(({ id, motion }) => ({ id, motion })),
+    [
+      { id: "action-1", motion: "soft-enter" },
+      { id: "action-2", motion: "travel-path" },
+      { id: "action-3", motion: "focus" },
+    ],
+  );
+  assert.ok(parsed.timeline[0]!.anchor.length <= 60);
+  assert.equal(parsed.world[0]!.box.height, 60);
+  assert.deepEqual(parsed.timeline[0]!.objectIds, ["client-box", "server-box"]);
 });
 
 const content: ContentPlan = {
