@@ -89,6 +89,56 @@ test("supplied narration preserves punctuation and wording exactly, not only nor
   );
 });
 
+test("technical use of value colon is allowed but prompt-label prefixes are rejected", () => {
+  const words = [
+    "The",
+    "value:",
+    ...Array.from({ length: 138 }, () => "request"),
+  ];
+  const narration = words.join(" ");
+  const task = {
+    id: "fixture",
+    row: 2,
+    idea: "API",
+    description: "",
+    narration: "",
+    type: "" as const,
+    audience: "",
+    sourceUrls: [],
+  };
+  const plan = {
+    type: "question" as const,
+    title: "API",
+    narration,
+    copies: {
+      youtube: { title: "API", description: "API" },
+      instagram: { title: "API", description: "API" },
+      facebook: { title: "API", description: "API" },
+    },
+    beats: [
+      {
+        id: "one",
+        text: narration,
+        purpose: "Show the concrete request value",
+      },
+    ],
+  };
+  assert.equal(gradeContent(plan, task), 100);
+  const labelled = `Hook: ${words.slice(2).join(" ")}`;
+  assert.throws(
+    () =>
+      gradeContent(
+        {
+          ...plan,
+          narration: labelled,
+          beats: [{ ...plan.beats[0]!, text: labelled }],
+        },
+        task,
+      ),
+    /prompt labels/i,
+  );
+});
+
 test("prohibited generic introductions are rejected instead of barely passing", () => {
   const words = [
     "Welcome,",

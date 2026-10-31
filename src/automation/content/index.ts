@@ -274,7 +274,9 @@ export function gradeContent(
     /follow for more|let me know/i.test(plan.narration)
   )
     throw new Error("Generic introduction or engagement bait is prohibited");
-  if (/\*|\[[^\]]+\]|\b(hook|gap|value|loop):/i.test(plan.narration))
+  if (
+    /\*|\[[^\]]+\]|(?:^|\n)\s*(?:hook|gap|value|loop)\s*:/i.test(plan.narration)
+  )
     throw new Error("Stage directions or prompt labels are prohibited");
   if (new Set(plan.beats.map((beat) => beat.id)).size !== plan.beats.length)
     throw new Error("Duplicate explanation beat IDs");
