@@ -91,8 +91,8 @@ export function createAssets(config: Config, http: Http, gemini: Gemini) {
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
           const search = await gemini.grounded(
-            config.GEMINI_VISUAL_MODEL,
-            config.GEMINI_API_KEY_FOR_VISUALS,
+            config.GEMINI_SCRIPT_MODEL,
+            config.GEMINI_API_KEY,
             `Find an image source for this technical explanation. Topic: ${JSON.stringify(task.idea)}. Asset intent: ${JSON.stringify(intent)}. Explanation: ${JSON.stringify(content.narration)}. User-provided sources: ${JSON.stringify(task.sourceUrls)}. Prefer an official documentation, product, standards, or repository page. A third-party page is allowed only when it explicitly states reusable licensing. Return JSON {candidates:[{pageUrl,imageUrl?,official,rightsEvidence}]}. Do not return social media, stock preview, tracking, data, blob, or search-result URLs.`,
             candidatesSchema,
           );

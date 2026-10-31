@@ -36,7 +36,7 @@ const environment = z.object({
     .string()
     .regex(/^v\d+\.\d+$/)
     .default("v23.0"),
-  GEMINI_SCRIPT_MODEL: z.string().default("gemini-2.5-flash"),
+  GEMINI_SCRIPT_MODEL: z.string().default("gemini-2.5-flash-lite"),
   GEMINI_VISUAL_MODEL: z.string().default("gemini-2.5-flash"),
   AUTOMATION_BUDGET_MINUTES: z.coerce
     .number()

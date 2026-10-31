@@ -100,6 +100,7 @@ export async function twice<T>(
     try {
       return await operation(attempt, previous);
     } catch (error) {
+      if (error instanceof HttpError && error.status === 429) throw error;
       previous = error instanceof Error ? error.message : String(error);
     }
   }

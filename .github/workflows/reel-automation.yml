@@ -35,6 +35,8 @@ jobs:
       GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       GEMINI_API_KEY_FOR_VISUALS: ${{ secrets.GEMINI_API_KEY_FOR_VISUALS }}
+      GEMINI_SCRIPT_MODEL: "gemini-2.5-flash-lite"
+      GEMINI_VISUAL_MODEL: "gemini-2.5-flash"
       ASSEMBLYAI_API_KEY: ${{ secrets.ASSEMBLYAI_API_KEY }}
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
