@@ -55,6 +55,7 @@ jobs:
       PYTHON_EXECUTABLE: python
       APPROVAL_TTL_HOURS: "72"
       APPROVAL_ID: ${{ github.event.client_payload.approval_id || '' }}
+      AUTOMATION_PHASE: preapproval
     steps:
       - name: Record total job budget start
         run: echo "AUTOMATION_STARTED_AT_MS=$(date +%s%3N)" >> "$GITHUB_ENV"

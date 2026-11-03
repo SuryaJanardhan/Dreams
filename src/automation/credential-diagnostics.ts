@@ -234,8 +234,16 @@ async function main() {
       },
     },
   ];
+  const publishingProviders = new Set(["YouTube", "Instagram", "Facebook"]);
+  const previewPhase = process.env.AUTOMATION_PHASE === "preapproval";
+  const activeChecks = previewPhase
+    ? checks.filter((check) => !publishingProviders.has(check.provider))
+    : checks;
+  if (previewPhase)
+    for (const provider of publishingProviders)
+      console.log(`DEFERRED\t${provider}\tChecked only after video approval`);
   const results: CheckResult[] = [];
-  for (const check of checks)
+  for (const check of activeChecks)
     try {
       results.push({
         provider: check.provider,
