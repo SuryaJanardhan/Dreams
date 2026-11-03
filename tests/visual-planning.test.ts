@@ -93,6 +93,55 @@ test("missing action IDs and invented motions are normalized before validation",
   assert.deepEqual(parsed.timeline[0]!.objectIds, ["client-box", "server-box"]);
 });
 
+test("omitted optional visual collections become empty arrays", () => {
+  const minimal = {
+    version: 2,
+    world: [
+      {
+        id: "client",
+        kind: "client",
+        label: "Client",
+        semantic: "active",
+        box: { x: 20, y: 20, width: 180, height: 120 },
+      },
+      {
+        id: "server",
+        kind: "server",
+        label: "Server",
+        semantic: "structure",
+        box: { x: 400, y: 20, width: 180, height: 120 },
+      },
+    ],
+    timeline: [
+      {
+        beatId: "shared",
+        action: "create",
+        objectIds: ["client", "server"],
+        anchor: "Both",
+        motion: "soft-enter",
+      },
+      {
+        beatId: "queue",
+        action: "mutate",
+        objectIds: ["client"],
+        anchor: "queue",
+        motion: "state-change",
+      },
+      {
+        beatId: "stream",
+        action: "focus",
+        objectIds: ["server"],
+        anchor: "stream",
+        motion: "focus",
+      },
+    ],
+  };
+  const parsed = visualPlanSchema.parse(minimal);
+  assert.deepEqual(parsed.camera, []);
+  assert.deepEqual(parsed.assetIntents, []);
+  assert.deepEqual(parsed.proposedPrimitives, []);
+});
+
 const content: ContentPlan = {
   type: "comparison",
   title: "Queue vs stream",

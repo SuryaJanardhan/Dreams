@@ -206,6 +206,12 @@ function shortAnchor(value: unknown): unknown {
 export function normalizeGeneratedVisualPlan(value: unknown): unknown {
   if (!value || typeof value !== "object" || Array.isArray(value)) return value;
   const root = structuredClone(value) as Record<string, unknown>;
+  for (const optionalCollection of [
+    "camera",
+    "assetIntents",
+    "proposedPrimitives",
+  ])
+    if (root[optionalCollection] === undefined) root[optionalCollection] = [];
   if (Array.isArray(root.timeline))
     root.timeline = root.timeline.map((entry, index) => {
       if (!entry || typeof entry !== "object" || Array.isArray(entry))
