@@ -99,7 +99,9 @@ async function main() {
           http,
         );
         const probeSchema = z.object({ status: z.literal("ok") });
-        await groq.generate("Return JSON {status: ok}", probeSchema);
+        await groq.generate("Return JSON {status: ok}", probeSchema, {
+          maxCompletionTokens: 32,
+        });
         return `model accepted: ${config.GROQ_MODEL}; keys configured: ${config.GROQ_API_KEYS.length}`;
       },
     },

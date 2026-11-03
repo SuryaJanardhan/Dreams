@@ -46,11 +46,11 @@ test("Groq distributes logical requests round-robin across configured keys", asy
 });
 test("Groq advances to another key on quota exhaustion", async () => {
   const http = new GroqHttpFixture({ "key-a": "quota" });
-  const groq = new Groq(config, http);
+  const groq = new Groq({ ...config, wait: async () => {} }, http);
   assert.equal((await groq.generate("one", resultSchema)).value, "key-b");
   assert.deepEqual(
     http.calls.map((call) => call.authorization),
-    ["Bearer key-a", "Bearer key-b"],
+    ["Bearer key-a", "Bearer key-a", "Bearer key-b"],
   );
 });
 
@@ -60,11 +60,35 @@ test("pool exhaustion retains per-key HTTP status for incident diagnosis", async
     "key-b": "quota",
     "key-c": "quota",
   });
-  const groq = new Groq(config, http);
+  const groq = new Groq({ ...config, wait: async () => {} }, http);
   await assert.rejects(
     groq.generate("one", resultSchema),
     /Provider HTTP 429.*Provider HTTP 429.*Provider HTTP 429/s,
   );
+});
+
+test("transient output-token 429 waits for reset and retries one key", async () => {
+  class TransientHttp extends GroqHttpFixture {
+    attempts = 0;
+    override async response(url: string, request: Request = {}) {
+      this.attempts += 1;
+      if (this.attempts === 1)
+        throw new HttpError(
+          429,
+          "api.groq.com",
+          "Output token limit. Please try again in 0.01s.",
+        );
+      return super.response(url, request);
+    }
+  }
+  const http = new TransientHttp();
+  const delays: number[] = [];
+  const groq = new Groq(
+    { ...config, wait: async (milliseconds) => void delays.push(milliseconds) },
+    http,
+  );
+  assert.equal((await groq.generate("probe", resultSchema)).value, "key-a");
+  assert.deepEqual(delays, [260]);
 });
 test("schema-invalid model output is not hidden by key rotation", async () => {
   const http = new GroqHttpFixture({ "key-a": "invalid" });

@@ -7,6 +7,7 @@ export interface GroqConfig {
   keys: readonly string[];
   model: string;
   baseUrl?: string;
+  wait?: (milliseconds: number) => Promise<void>;
 }
 
 export class GroqPoolExhaustedError extends Error {
@@ -29,6 +30,7 @@ export class Groq implements StructuredGenerator {
   private cursor = 0;
   private readonly unavailable = new Set<string>();
   private readonly baseUrl: string;
+  private readonly wait: (milliseconds: number) => Promise<void>;
   constructor(
     private readonly config: GroqConfig,
     private readonly http: Http,
@@ -40,6 +42,10 @@ export class Groq implements StructuredGenerator {
       /\/$/,
       "",
     );
+    this.wait =
+      config.wait ??
+      ((milliseconds) =>
+        new Promise((resolve) => setTimeout(resolve, milliseconds)));
   }
   private orderedKeys() {
     const start = this.cursor;
@@ -49,50 +55,75 @@ export class Groq implements StructuredGenerator {
         this.config.keys[(start + offset) % this.config.keys.length]!,
     );
   }
-  private async complete<T>(messages: unknown[], schema: z.ZodType<T>) {
+  private async complete<T>(
+    messages: unknown[],
+    schema: z.ZodType<T>,
+    maxCompletionTokens: number,
+  ) {
     const errors: string[] = [];
     for (const key of this.orderedKeys()) {
       if (this.unavailable.has(key)) continue;
-      try {
-        const response = await this.http.json(
-          `${this.baseUrl}/chat/completions`,
-          responseSchema,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${key}`,
-              "Content-Type": "application/json",
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const response = await this.http.json(
+            `${this.baseUrl}/chat/completions`,
+            responseSchema,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${key}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                model: this.config.model,
+                messages,
+                response_format: { type: "json_object" },
+                reasoning_effort: "none",
+                temperature: 0.2,
+                max_completion_tokens: maxCompletionTokens,
+                stream: false,
+              }),
+              timeout: 180000,
             },
-            body: JSON.stringify({
-              model: this.config.model,
-              messages,
-              response_format: { type: "json_object" },
-              reasoning_effort: "none",
-              temperature: 0.2,
-              stream: false,
-            }),
-            timeout: 180000,
-          },
-        );
-        const value: unknown = JSON.parse(
-          response.choices[0]?.message.content ?? "",
-        );
-        return schema.parse(value);
-      } catch (error) {
-        if (
-          error instanceof HttpError &&
-          [401, 403, 429, 500, 502, 503, 504].includes(error.status)
-        ) {
-          errors.push(error.message);
-          if ([401, 403, 429].includes(error.status)) this.unavailable.add(key);
-          continue;
+          );
+          const value: unknown = JSON.parse(
+            response.choices[0]?.message.content ?? "",
+          );
+          return schema.parse(value);
+        } catch (error) {
+          if (error instanceof HttpError && error.status === 429) {
+            errors.push(error.message);
+            if (attempt === 0) {
+              const seconds = /try again in\s+([\d.]+)s/i.exec(
+                error.message,
+              )?.[1];
+              const delayMs = seconds
+                ? Math.min(60000, Math.ceil(Number(seconds) * 1000) + 250)
+                : 15000;
+              await this.wait(delayMs);
+              continue;
+            }
+            break;
+          }
+          if (
+            error instanceof HttpError &&
+            [401, 403, 500, 502, 503, 504].includes(error.status)
+          ) {
+            errors.push(error.message);
+            if ([401, 403].includes(error.status)) this.unavailable.add(key);
+            break;
+          }
+          throw error;
         }
-        throw error;
       }
     }
     throw new GroqPoolExhaustedError(errors);
   }
-  generate<T>(prompt: string, schema: z.ZodType<T>): Promise<T> {
+  generate<T>(
+    prompt: string,
+    schema: z.ZodType<T>,
+    options: { maxCompletionTokens?: number } = {},
+  ): Promise<T> {
     return this.complete(
       [
         {
@@ -103,6 +134,7 @@ export class Groq implements StructuredGenerator {
         { role: "user", content: prompt },
       ],
       schema,
+      options.maxCompletionTokens ?? 1024,
     );
   }
   async vision<T>(
@@ -131,6 +163,7 @@ export class Groq implements StructuredGenerator {
         },
       ],
       schema,
+      2048,
     );
   }
 }

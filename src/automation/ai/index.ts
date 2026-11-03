@@ -2,7 +2,11 @@ import type { z } from "zod";
 import type { ResearchPacket } from "../domain.js";
 
 export interface StructuredGenerator {
-  generate<T>(prompt: string, schema: z.ZodType<T>): Promise<T>;
+  generate<T>(
+    prompt: string,
+    schema: z.ZodType<T>,
+    options?: { maxCompletionTokens?: number },
+  ): Promise<T>;
   vision<T>(
     prompt: string,
     imagePath: string,
