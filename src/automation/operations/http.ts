@@ -101,6 +101,13 @@ export async function twice<T>(
       return await operation(attempt, previous);
     } catch (error) {
       if (error instanceof HttpError && error.status === 429) throw error;
+      if (
+        error &&
+        typeof error === "object" &&
+        "retryable" in error &&
+        error.retryable === false
+      )
+        throw error;
       previous = error instanceof Error ? error.message : String(error);
     }
   }

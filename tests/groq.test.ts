@@ -53,6 +53,19 @@ test("Groq advances to another key on quota exhaustion", async () => {
     ["Bearer key-a", "Bearer key-b"],
   );
 });
+
+test("pool exhaustion retains per-key HTTP status for incident diagnosis", async () => {
+  const http = new GroqHttpFixture({
+    "key-a": "quota",
+    "key-b": "quota",
+    "key-c": "quota",
+  });
+  const groq = new Groq(config, http);
+  await assert.rejects(
+    groq.generate("one", resultSchema),
+    /Provider HTTP 429.*Provider HTTP 429.*Provider HTTP 429/s,
+  );
+});
 test("schema-invalid model output is not hidden by key rotation", async () => {
   const http = new GroqHttpFixture({ "key-a": "invalid" });
   const groq = new Groq(config, http);

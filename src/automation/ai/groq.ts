@@ -9,6 +9,16 @@ export interface GroqConfig {
   baseUrl?: string;
 }
 
+export class GroqPoolExhaustedError extends Error {
+  readonly retryable = false;
+  constructor(readonly details: string[]) {
+    super(
+      `Groq key pool unavailable: ${details.join("; ") || "all keys disabled"}`,
+    );
+    this.name = "GroqPoolExhaustedError";
+  }
+}
+
 const responseSchema = z.object({
   choices: z
     .array(z.object({ message: z.object({ content: z.string().min(1) }) }))
@@ -80,9 +90,7 @@ export class Groq implements StructuredGenerator {
         throw error;
       }
     }
-    throw new Error(
-      `Groq key pool unavailable: ${errors.join("; ") || "all keys disabled"}`,
-    );
+    throw new GroqPoolExhaustedError(errors);
   }
   generate<T>(prompt: string, schema: z.ZodType<T>): Promise<T> {
     return this.complete(
