@@ -113,29 +113,29 @@ For the best results, your template assets must follow these constraints:
 
 Add these to your **Settings > Secrets and variables > Actions**.
 
-| Secret                       | Description                                                           |
-| :--------------------------- | :-------------------------------------------------------------------- |
-| `BASE_VIDEO_DRIVE_ID`        | Google Drive ID of your base video (e.g., `1Tc0...`).                 |
-| `GEMINI_API_KEY`             | Primary key for scripts and logic.                                    |
-| `GEMINI_API_KEY_FOR_VISUALS` | Primary key for animations and visuals.                               |
-| `GROQ_API_KEY`               | **Fallback key** for script and caption generation.                   |
-| `ASSEMBLYAI_API_KEY`         | Required for automatic subtitle (SRT) generation.                     |
-| `GOOGLE_SHEET_ID`            | The ID from your sheet's URL.                                         |
-| `GOOGLE_CREDENTIALS`         | Service Account JSON.                                                 |
-| `GOOGLE_CLIENT_ID`           | OAuth Client ID for YouTube.                                          |
-| `GOOGLE_CLIENT_SECRET`       | OAuth Client Secret for YouTube.                                      |
-| `YOUTUBE_REFRESH_TOKEN`      | OAuth Refresh Token for YouTube.                                      |
-| `INSTAGRAM_ACCOUNT_ID`       | Your Instagram Business Account ID.                                   |
-| `INSTAGRAM_ACCESS_TOKEN`     | Long-lived Facebook User Access Token.                                |
-| `FACEBOOK_PAGE_ID`           | Your target Facebook Page ID.                                         |
-| `FACEBOOK_ACCESS_TOKEN`      | Permanent Page Access Token.                                          |
-| `SUPABASE_URL`               | Your Supabase Project URL.                                            |
-| `SUPABASE_SERVICE_ROLE_KEY`  | Service Role Key for bucket access.                                   |
-| `SUPABASE_BUCKET`            | Bucket name (default: `videos`).                                      |
-| `EMAIL_USER`                 | Gmail address for login.                                              |
-| `EMAIL_APP_PASSWORD`         | Gmail App Password.                                                   |
-| `NOTIFICATION_EMAIL`         | Destination for completion links.                                     |
-| `USE_PREMIUM_WAV2LIP`        | Set to `true` to enable **GFPGAN** face restoration (High CPU usage). |
+| Secret                      | Description                                                                                   |
+| :-------------------------- | :-------------------------------------------------------------------------------------------- |
+| `BASE_VIDEO_DRIVE_ID`       | Google Drive ID of your base video (e.g., `1Tc0...`).                                         |
+| `GEMINI_API_KEY`            | Primary key for scripts and logic.                                                            |
+| `GROQ_API_KEYS`             | Comma-separated pool of 1–4 Groq API keys for Qwen content, visual planning and image review. |
+| `GROQ_MODEL`                | Qwen model ID; defaults to `qwen/qwen3.8-27b`.                                                |
+| `ASSEMBLYAI_API_KEY`        | Required for automatic subtitle (SRT) generation.                                             |
+| `GOOGLE_SHEET_ID`           | The ID from your sheet's URL.                                                                 |
+| `GOOGLE_CREDENTIALS`        | Service Account JSON.                                                                         |
+| `GOOGLE_CLIENT_ID`          | OAuth Client ID for YouTube.                                                                  |
+| `GOOGLE_CLIENT_SECRET`      | OAuth Client Secret for YouTube.                                                              |
+| `YOUTUBE_REFRESH_TOKEN`     | OAuth Refresh Token for YouTube.                                                              |
+| `INSTAGRAM_ACCOUNT_ID`      | Your Instagram Business Account ID.                                                           |
+| `INSTAGRAM_ACCESS_TOKEN`    | Long-lived Facebook User Access Token.                                                        |
+| `FACEBOOK_PAGE_ID`          | Your target Facebook Page ID.                                                                 |
+| `FACEBOOK_ACCESS_TOKEN`     | Permanent Page Access Token.                                                                  |
+| `SUPABASE_URL`              | Your Supabase Project URL.                                                                    |
+| `SUPABASE_SERVICE_ROLE_KEY` | Service Role Key for bucket access.                                                           |
+| `SUPABASE_BUCKET`           | Bucket name (default: `videos`).                                                              |
+| `EMAIL_USER`                | Gmail address for login.                                                                      |
+| `EMAIL_APP_PASSWORD`        | Gmail App Password.                                                                           |
+| `NOTIFICATION_EMAIL`        | Destination for completion links.                                                             |
+| `USE_PREMIUM_WAV2LIP`       | Set to `true` to enable **GFPGAN** face restoration (High CPU usage).                         |
 
 ---
 

@@ -12,6 +12,7 @@ import type {
 import type { Config } from "../operations/config.js";
 import type { Http } from "../operations/http.js";
 import type { Gemini } from "../content/index.js";
+import type { StructuredGenerator } from "../ai/index.js";
 
 const candidatesSchema = z.object({
   candidates: z
@@ -78,7 +79,12 @@ async function resolveImage(http: Http, pageRaw: string, explicit?: string) {
   return safeRemoteUrl(image);
 }
 
-export function createAssets(config: Config, http: Http, gemini: Gemini) {
+export function createAssets(
+  config: Config,
+  http: Http,
+  gemini: Gemini,
+  groq: StructuredGenerator,
+) {
   return async (
     task: Task,
     content: ContentPlan,
@@ -156,9 +162,7 @@ export function createAssets(config: Config, http: Http, gemini: Gemini) {
               .png()
               .toBuffer(),
           );
-          const review = await gemini.vision(
-            config.GEMINI_VISUAL_MODEL,
-            config.GEMINI_API_KEY_FOR_VISUALS,
+          const review = await groq.vision(
             `Judge this image only for the stated use in a technical reel. Intent: ${JSON.stringify(intent)}. Return JSON {correctSubject,requiredFeaturesPresent,safeCrop,relevance,issues}. Reject generic, misleading, text-heavy, blurry, badly cropped, watermarked, or semantically unrelated images.`,
             path,
             "image/png",

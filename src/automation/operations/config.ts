@@ -10,7 +10,16 @@ const environment = z.object({
   GOOGLE_SHEET_ID: z.string().min(1),
   GOOGLE_CREDENTIALS: z.string().min(1),
   GEMINI_API_KEY: z.string().min(1),
-  GEMINI_API_KEY_FOR_VISUALS: z.string().min(1),
+  GROQ_API_KEYS: z
+    .string()
+    .transform((value) =>
+      value
+        .split(",")
+        .map((key) => key.trim())
+        .filter(Boolean),
+    )
+    .pipe(z.array(z.string().min(10)).min(1).max(4)),
+  GROQ_MODEL: z.string().default("qwen/qwen3.8-27b"),
   ASSEMBLYAI_API_KEY: z.string().min(1),
   SUPABASE_URL: z.url(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
@@ -37,7 +46,6 @@ const environment = z.object({
     .regex(/^v\d+\.\d+$/)
     .default("v23.0"),
   GEMINI_SCRIPT_MODEL: z.string().default("gemini-2.5-flash-lite"),
-  GEMINI_VISUAL_MODEL: z.string().default("gemini-2.5-flash"),
   AUTOMATION_BUDGET_MINUTES: z.coerce
     .number()
     .int()
@@ -80,7 +88,6 @@ export function loadConfig(
   }
   const keys = [
     "GEMINI_API_KEY",
-    "GEMINI_API_KEY_FOR_VISUALS",
     "ASSEMBLYAI_API_KEY",
     "SUPABASE_SERVICE_ROLE_KEY",
     "GOOGLE_CLIENT_SECRET",
@@ -93,7 +100,11 @@ export function loadConfig(
     ...parsed.data,
     credentials,
     root: resolve(root),
-    secrets: [...keys.map((key) => parsed.data[key]), credentials.private_key],
+    secrets: [
+      ...keys.map((key) => parsed.data[key]),
+      ...parsed.data.GROQ_API_KEYS,
+      credentials.private_key,
+    ],
   };
 }
 export function redact(

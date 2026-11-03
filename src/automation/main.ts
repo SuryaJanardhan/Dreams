@@ -2,6 +2,7 @@ import "dotenv/config";
 import { resolve } from "node:path";
 import { loadConfig, redact } from "./operations/config.js";
 import { Http } from "./operations/http.js";
+import { Groq } from "./ai/groq.js";
 import { command, probe } from "./operations/media.js";
 import { createNotifier } from "./operations/email.js";
 import { createWorkspace, assertAsset } from "./workspace/index.js";
@@ -59,6 +60,10 @@ export async function main() {
     const http = new Http(signal);
     const sheets = new Sheets(config, http);
     const gemini = new Gemini(http);
+    const groq = new Groq(
+      { keys: config.GROQ_API_KEYS, model: config.GROQ_MODEL },
+      http,
+    );
     const notifier = createNotifier(process.env, secrets);
     const approvalStore = new ApprovalStore(config, http);
     const finalize = () => {
@@ -101,9 +106,9 @@ export async function main() {
       },
       workspace: (id) => createWorkspace(config.root, id),
       research: createResearch(config, gemini),
-      content: createContent(config, gemini),
+      content: createContent(groq),
       promotedPrimitives: () => sheets.promotedPrimitives(parsePrimitiveSpec),
-      visualPlan: createVisualPlan(config, gemini),
+      visualPlan: createVisualPlan(groq),
       recordPrimitiveReviews: async (jobId, specs) => {
         await writePrimitiveReviewArtifacts(config.root, jobId, specs);
         const artifactUrl = process.env.GITHUB_RUN_ID
@@ -111,7 +116,7 @@ export async function main() {
           : undefined;
         return sheets.recordPrimitiveReviews(jobId, specs, artifactUrl);
       },
-      assets: createAssets(config, http, gemini),
+      assets: createAssets(config, http, gemini, groq),
       voice: createVoice(config, signal),
       captions: createCaptions(config, http),
       render: (plan, visualPlan, assets, narration, captions, workspace) =>
@@ -130,14 +135,13 @@ export async function main() {
         video,
         workspace,
       ) => {
-        const review = createVisualQuality(config, gemini, signal);
+        const review = createVisualQuality(groq, signal);
         try {
           await review(plan, visualPlan, video, workspace);
           return video;
         } catch (error) {
           const repaired = await repairVisualPlan(
-            config,
-            gemini,
+            groq,
             plan,
             visualPlan,
             error instanceof Error ? error.message : String(error),

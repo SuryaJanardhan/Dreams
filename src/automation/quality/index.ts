@@ -8,7 +8,7 @@ import type {
   VisualPlan,
   Workspace,
 } from "../domain.js";
-import type { Gemini } from "../content/index.js";
+import type { StructuredGenerator } from "../ai/index.js";
 import type { Config } from "../operations/config.js";
 import { command } from "../operations/media.js";
 
@@ -70,8 +70,7 @@ export function requireVisualQuality(review: z.infer<typeof reviewSchema>) {
 }
 
 export function createVisualQuality(
-  config: Config,
-  gemini: Gemini,
+  groq: StructuredGenerator,
   signal: () => AbortSignal,
 ) {
   return async (
@@ -117,9 +116,7 @@ export function createVisualQuality(
       )
       .jpeg({ quality: 88 })
       .toFile(contactSheet);
-    const review = await gemini.vision(
-      config.GEMINI_VISUAL_MODEL,
-      config.GEMINI_API_KEY_FOR_VISUALS,
+    const review = await groq.vision(
       `Audit these eight ordered sampled frames from one continuous technical reel. Narration and beats: ${JSON.stringify(content)}. VisualStory: ${JSON.stringify(plan)}. Return JSON {technicalMeaning,sequenceClarity,visualRelevance,cleanliness,consistency,continuity,illustrationQuality,motionCoherence,captionReadability,issues:[{beatId,objectId?,defect}]}. Continuity means the frames look like one persistent world evolving rather than independent slides: object identity, position history and visual context remain understandable. Illustration quality means trusted components look intentionally drawn and technically meaningful rather than generic bordered boxes. Motion coherence means state changes, internal actions, curved transfers, reflows and camera framing visibly support the narration without unexplained jumps. Also judge the fixed semantic palette, cleanliness and caption readability. Be strict and name only defects that require a VisualStory change.`,
       contactSheet,
       "image/jpeg",

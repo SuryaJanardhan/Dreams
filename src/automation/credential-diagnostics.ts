@@ -3,6 +3,8 @@ import nodemailer from "nodemailer";
 import { google } from "googleapis";
 import { z } from "zod";
 import { loadConfig, redact } from "./operations/config.js";
+import { Groq } from "./ai/groq.js";
+import { Http } from "./operations/http.js";
 
 interface CheckResult {
   provider: string;
@@ -88,36 +90,19 @@ async function main() {
         return `readable sheet: ${sheet.properties.title}`;
       },
     },
-    ...[
-      ["Gemini script", config.GEMINI_API_KEY, config.GEMINI_SCRIPT_MODEL],
-      [
-        "Gemini visuals",
-        config.GEMINI_API_KEY_FOR_VISUALS,
-        config.GEMINI_VISUAL_MODEL,
-      ],
-    ].map(([provider, key, model]) => ({
-      provider: provider ?? "Gemini",
+    {
+      provider: "Groq Qwen key pool",
       async run() {
-        const result = await response(
-          `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model ?? "")}:generateContent`,
-          {
-            method: "POST",
-            headers: {
-              "x-goog-api-key": key ?? "",
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              contents: [{ role: "user", parts: [{ text: "Return only OK" }] }],
-              generationConfig: { maxOutputTokens: 8 },
-            }),
-          },
-          60_000,
+        const http = new Http(() => new AbortController().signal);
+        const groq = new Groq(
+          { keys: config.GROQ_API_KEYS, model: config.GROQ_MODEL },
+          http,
         );
-        const value: unknown = await result.json();
-        z.object({ candidates: z.array(z.unknown()).min(1) }).parse(value);
-        return `model accepted: ${model}`;
+        const probeSchema = z.object({ status: z.literal("ok") });
+        await groq.generate("Return JSON {status: ok}", probeSchema);
+        return `model accepted: ${config.GROQ_MODEL}; keys configured: ${config.GROQ_API_KEYS.length}`;
       },
-    })),
+    },
     {
       provider: "AssemblyAI",
       async run() {

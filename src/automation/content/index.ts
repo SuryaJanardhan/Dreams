@@ -2,8 +2,8 @@ import { z } from "zod";
 import { readFile } from "node:fs/promises";
 import { contentTypes, platforms } from "../domain.js";
 import type { Task, ContentPlan, ResearchPacket } from "../domain.js";
-import type { Config } from "../operations/config.js";
 import { Http, twice } from "../operations/http.js";
+import type { StructuredGenerator } from "../ai/index.js";
 const responseSchema = z.object({
   candidates: z
     .array(
@@ -297,12 +297,10 @@ export function gradeContent(
     throw new Error(`Content quality grade ${score}/100 is below 80`);
   return score;
 }
-export function createContent(config: Config, gemini: Gemini) {
+export function createContent(groq: StructuredGenerator) {
   return (task: Task, research: ResearchPacket) =>
     twice(async (_attempt, error) => {
-      const plan = await gemini.generate(
-        config.GEMINI_SCRIPT_MODEL,
-        config.GEMINI_API_KEY,
+      const plan = await groq.generate(
         `Prepare an English technical educational reel about ${JSON.stringify(task.idea)}. Context: ${JSON.stringify(task.description)}. Audience: ${JSON.stringify(task.audience || "people learning practical software engineering")}. Research: ${JSON.stringify(research)}.
 ${task.narration ? `Use exactly this supplied narration without rewriting it: ${JSON.stringify(task.narration)}` : "Write a single continuous spoken narration of 105–155 words. Let the explanation end naturally; do not pad or rush it to hit an exact duration."}
 ${task.type ? `The Sheet explicitly sets type=${task.type}; preserve it.` : `Classify type as one of ${contentTypes.join(", ")}.`} Follow the matching structure: question = problem, naive understanding, failure, correct model; comparison = shared purpose, essential difference, concrete example, practical choice; interview = exact prompt, reasoning, scalable answer, tradeoff; scenario = initial state, triggering event, consequence, resolution.
@@ -311,9 +309,7 @@ Output JSON {type,title,narration,beats:[{id,text,purpose}],copies:{youtube:{tit
         planSchema,
       );
       const structuralGrade = gradeContent(plan, task);
-      const quality = await gemini.generate(
-        config.GEMINI_SCRIPT_MODEL,
-        config.GEMINI_API_KEY,
+      const quality = await groq.generate(
         `Audit this short technical explanation without rewriting it. Topic: ${JSON.stringify(task.idea)}. Trusted context and evidence: ${JSON.stringify(research)}. Plan: ${JSON.stringify(plan)}.
 Return JSON {clarity,accuracy,exampleUsefulness,authenticity,issues}. Score each dimension 0–100. Accuracy means definitions and causal claims agree with established technical meaning and the trusted context. Example usefulness means the example visibly demonstrates the mechanism rather than decorating it. Authenticity means direct, specific, conversational language without hype, generic filler, fake personal experience or engagement bait. Clarity includes a comprehensible opening, logical progression and memorable payoff. List concrete issues only. Be strict; formatting validity alone is not quality.`,
         explanationQualitySchema,

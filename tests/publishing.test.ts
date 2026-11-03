@@ -14,7 +14,7 @@ const config = loadConfig({
   }),
   GOOGLE_SHEET_ID: "fixture",
   GEMINI_API_KEY: "fixture",
-  GEMINI_API_KEY_FOR_VISUALS: "fixture",
+  GROQ_API_KEYS: "fixture-groq-key",
   ASSEMBLYAI_API_KEY: "fixture",
   SUPABASE_URL: "https://storage.example.org",
   SUPABASE_SERVICE_ROLE_KEY: "fixture",

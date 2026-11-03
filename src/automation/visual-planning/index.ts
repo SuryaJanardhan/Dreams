@@ -9,9 +9,8 @@ import type {
   VisualBox,
   VisualPlan,
 } from "../domain.js";
-import type { Config } from "../operations/config.js";
 import { twice } from "../operations/http.js";
-import type { Gemini } from "../content/index.js";
+import type { StructuredGenerator } from "../ai/index.js";
 
 const semanticColors = [
   "structure",
@@ -501,16 +500,14 @@ export function validateVisualPlan(plan: VisualPlan, content: ContentPlan) {
   return plan;
 }
 
-export function createVisualPlan(config: Config, gemini: Gemini) {
+export function createVisualPlan(groq: StructuredGenerator) {
   return (
     task: Task,
     content: ContentPlan,
     promotedPrimitives: PrimitiveSpec[] = [],
   ) =>
     twice(async (_attempt, error) => {
-      const result = await gemini.generate(
-        config.GEMINI_SCRIPT_MODEL,
-        config.GEMINI_API_KEY,
+      const result = await groq.generate(
         `Create one continuous declarative VisualStory for this vertical technical reel. Topic: ${JSON.stringify(task.idea)}. Content: ${JSON.stringify(content)}. Trusted reusable composite primitives: ${JSON.stringify(promotedPrimitives)}.
 Output JSON {version:2,world:[{id,kind,label,semantic,box:{x,y,width,height},detail?,rows?,assetId?,primitiveId?}],timeline:[{id,beatId,action,objectIds,anchor,value?,motion,layout?:[{objectId,box}]}],camera:[{id,beatId,action,objectIds,anchor,zoom}],assetIntents:[{id,query,purpose,requiredFeatures,sourcePreference:"official-first"}],proposedPrimitives:[{id,label,shapes:[{kind,x,y,width?,height?,text?,semantic}]}]}.
 This is one persistent illustrated world, not separate scenes. Introduce each object once with create, reveal or draw, then preserve its identity until an explicit remove. Never reset the canvas between related beats. Use reflow with destination boxes whenever existing objects must move; nothing may teleport. Use 2–7 visible objects, stable lowercase kebab-case IDs, no overlap and one primary causal motion at a time. Reuse the exact same normalized object ID in every reference. Every box must be at least 80×60. Every beat must have at least one action, actions must follow beat order, and the first action must anchor within the first six spoken words.
@@ -523,16 +520,13 @@ Canvas coordinates are 900×1250. The art direction is polished technical SVG il
 }
 
 export async function repairVisualPlan(
-  config: Config,
-  gemini: Gemini,
+  groq: StructuredGenerator,
   content: ContentPlan,
   rejected: VisualPlan,
   feedback: string,
   targets?: { beatIds: string[]; objectIds: string[] },
 ) {
-  const repaired = await gemini.generate(
-    config.GEMINI_SCRIPT_MODEL,
-    config.GEMINI_API_KEY,
+  const repaired = await groq.generate(
     `Repair this continuous declarative VisualStory after automated frame review. Content: ${JSON.stringify(content)}. Rejected story: ${JSON.stringify(rejected)}. Review defects: ${JSON.stringify(feedback)}. Allowed repair targets: ${JSON.stringify(targets ?? "the smallest unit necessary")}. Return the complete corrected VisualStory JSON. Preserve valid world IDs, asset intents and primitive specifications. Change only the listed beats and objects when targets are supplied. Preserve one continuous world; do not create scene resets or executable code.`,
     visualPlanSchema,
   );
