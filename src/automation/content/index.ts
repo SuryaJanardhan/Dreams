@@ -194,7 +194,38 @@ const identifierSchema = z
       .min(1)
       .regex(/^[a-zA-Z0-9-]+$/),
   );
-const planSchema = z.object({
+export function normalizeGeneratedPlan(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const plan = structuredClone(value) as Record<string, unknown>;
+  if (!Array.isArray(plan.beats) || plan.beats.length <= 8) return plan;
+  const beats = plan.beats as unknown[];
+  const retained = beats.slice(0, 7);
+  const overflow = beats.slice(7);
+  if (
+    overflow.some(
+      (beat) => !beat || typeof beat !== "object" || Array.isArray(beat),
+    )
+  )
+    return plan;
+  const first = overflow[0] as Record<string, unknown>;
+  const texts = overflow.map((beat) => (beat as Record<string, unknown>).text);
+  const purposes = overflow.map(
+    (beat) => (beat as Record<string, unknown>).purpose,
+  );
+  if (
+    texts.some((text) => typeof text !== "string") ||
+    purposes.some((purpose) => typeof purpose !== "string")
+  )
+    return plan;
+  retained.push({
+    ...first,
+    id: "beat-8",
+    text: texts.join(" "),
+    purpose: (purposes as string[]).join("; ").slice(0, 240),
+  });
+  return { ...plan, beats: retained };
+}
+const rawPlanSchema = z.object({
   type: z.enum(contentTypes),
   title: z.string().min(1).max(100),
   narration: z.string().min(1),
@@ -226,6 +257,7 @@ const planSchema = z.object({
     .min(3)
     .max(8),
 });
+const planSchema = z.preprocess(normalizeGeneratedPlan, rawPlanSchema);
 const explanationQualitySchema = z.object({
   clarity: z.number().int().min(0).max(100),
   accuracy: z.number().int().min(0).max(100),
@@ -304,8 +336,8 @@ export function createContent(groq: StructuredGenerator) {
         `Prepare an English technical educational reel about ${JSON.stringify(task.idea)}. Context: ${JSON.stringify(task.description)}. Audience: ${JSON.stringify(task.audience || "people learning practical software engineering")}. Research: ${JSON.stringify(research)}.
 ${task.narration ? `Use exactly this supplied narration without rewriting it: ${JSON.stringify(task.narration)}` : "Write a single continuous spoken narration of 105–155 words. Let the explanation end naturally; do not pad or rush it to hit an exact duration."}
 ${task.type ? `The Sheet explicitly sets type=${task.type}; preserve it.` : `Classify type as one of ${contentTypes.join(", ")}.`} Follow the matching structure: question = problem, naive understanding, failure, correct model; comparison = shared purpose, essential difference, concrete example, practical choice; interview = exact prompt, reasoning, scalable answer, tradeoff; scenario = initial state, triggering event, consequence, resolution.
-Keep simple natural Indian English and explain like a knowledgeable friend. Spell acronyms out on first use. Open with the exact confusion or problem. Carry one concrete example through the explanation. No greeting, dramatic social hook, outro, engagement bait, stage direction, markdown, heading, fake personal experience, or unsupported factual claim.
-Output JSON {type,title,narration,beats:[{id,text,purpose}],copies:{youtube:{title,description},instagram:{title,description},facebook:{title,description}}}. Beat IDs must use only letters, numbers and hyphens, for example beat-1. Use 3–8 beats whose text partitions EXACTLY the narration in order. Each purpose states the causal idea that must become visible. Write distinct platform descriptions but preserve the same factual meaning. ${error ? `Previous validation failed; fix it: ${error}` : ""}`,
+Keep simple natural Indian English and explain like a knowledgeable friend. Spell acronyms out on first use. Open with the exact confusion or problem. Carry one concrete example through the explanation. Shape the explanation so each beat creates a visible change in the same technical world: establish the initial state, show the causal action, reveal the consequence, and land on the useful mental model. Avoid beats that merely repeat or rename the same idea. No greeting, dramatic social hook, outro, engagement bait, stage direction, markdown, heading, fake personal experience, or unsupported factual claim.
+Output JSON {type,title,narration,beats:[{id,text,purpose}],copies:{youtube:{title,description},instagram:{title,description},facebook:{title,description}}}. Beat IDs must use only letters, numbers and hyphens, for example beat-1. Use 3–8 beats whose text partitions EXACTLY the narration in order. Each purpose names the causal state change a viewer should see, using a concrete verb such as enter, split, wait, reject, persist, expire or recover. Write distinct platform descriptions but preserve the same factual meaning. ${error ? `Previous validation failed; fix it: ${error}` : ""}`,
         planSchema,
       );
       const structuralGrade = gradeContent(plan, task);
