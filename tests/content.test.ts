@@ -214,6 +214,17 @@ test("explanation quality rejects a generic example despite valid formatting", (
   );
 });
 
+test("long audit notes are clipped without lowering their quality scores", () => {
+  const grade = requireExplanationQuality({
+    clarity: 90,
+    accuracy: 90,
+    exampleUsefulness: 90,
+    authenticity: 90,
+    issues: ["specific issue ".repeat(30)],
+  });
+  assert.equal(grade, 90);
+});
+
 test("grounded JSON parsing accepts plain, fenced and cited wrapper text", () => {
   assert.deepEqual(parseGroundedJson('{"summary":"plain"}'), {
     summary: "plain",

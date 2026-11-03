@@ -263,7 +263,15 @@ const explanationQualitySchema = z.object({
   accuracy: z.number().int().min(0).max(100),
   exampleUsefulness: z.number().int().min(0).max(100),
   authenticity: z.number().int().min(0).max(100),
-  issues: z.array(z.string().min(1).max(240)).max(5),
+  issues: z
+    .array(
+      z
+        .string()
+        .trim()
+        .min(1)
+        .transform((issue) => issue.slice(0, 240)),
+    )
+    .max(5),
 });
 type ExplanationQuality = z.infer<typeof explanationQualitySchema>;
 
