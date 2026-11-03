@@ -506,6 +506,15 @@ export function validateVisualPlan(plan: VisualPlan, content: ContentPlan) {
   return plan;
 }
 
+export function visualContentBrief(content: ContentPlan) {
+  return {
+    type: content.type,
+    title: content.title,
+    narration: content.narration,
+    beats: content.beats,
+  };
+}
+
 export function createVisualPlan(groq: StructuredGenerator) {
   return (
     task: Task,
@@ -514,7 +523,7 @@ export function createVisualPlan(groq: StructuredGenerator) {
   ) =>
     twice(async (_attempt, error) => {
       const result = await groq.generate(
-        `Act as a senior motion designer and technical storyboard artist. Design a visually elegant, easy-to-follow animation for this vertical technical reel. Topic: ${JSON.stringify(task.idea)}. Content: ${JSON.stringify(content)}. Trusted reusable composite primitives: ${JSON.stringify(promotedPrimitives)}.
+        `Act as a senior motion designer and technical storyboard artist. Design a visually elegant, easy-to-follow animation for this vertical technical reel. Topic: ${JSON.stringify(task.idea)}. Spoken content brief: ${JSON.stringify(visualContentBrief(content))}. Trusted reusable composite primitives: ${JSON.stringify(promotedPrimitives)}.
 Output JSON {version:2,world:[{id,kind,label,semantic,box:{x,y,width,height},detail?,rows?,assetId?,primitiveId?}],timeline:[{id,beatId,action,objectIds,anchor,value?,motion,layout?:[{objectId,box}]}],camera:[{id,beatId,action,objectIds,anchor,zoom}],assetIntents:[{id,query,purpose,requiredFeatures,sourcePreference:"official-first"}],proposedPrimitives:[{id,label,shapes:[{kind,x,y,width?,height?,text?,semantic}]}]}.
 This is a single continuous animated composition, never a sequence of unrelated slides. First understand the narration's cause-and-effect, then stage only the objects needed to show it. Give objects a clear spatial home and preserve their identity, scale, orientation and relationships across beats. Use the same object to show changing state: insert a row, move a token, open a lock, fill a queue, split a branch, reveal a result. Do not redraw or replace an object just to signal a new beat.
 Choreograph each beat as a small visual sentence: introduce or focus the subject, perform one readable causal action, then let the result settle before the next idea. Prefer a few large, legible motions over many tiny decorative movements. Transfers must visibly travel from source to destination; use a curved path when it clarifies routing. Reflows must animate every affected object's move to its stated destination. Use staggered entrances only for related objects. Keep motion directional, paced and motivated by the spoken words. Never teleport, flash, jitter, bounce without purpose, or move the whole scene at once. Use camera motion sparingly and return to a stable composition after a close look.
@@ -536,7 +545,7 @@ export async function repairVisualPlan(
   targets?: { beatIds: string[]; objectIds: string[] },
 ) {
   const repaired = await groq.generate(
-    `Act as a senior animation director repairing a specific visual defect in one continuous technical reel. Content: ${JSON.stringify(content)}. Current story: ${JSON.stringify(rejected)}. Frame-review defects: ${JSON.stringify(feedback)}. Allowed repair targets: ${JSON.stringify(targets ?? "the smallest unit necessary")}.
+    `Act as a senior animation director repairing a specific visual defect in one continuous technical reel. Spoken content brief: ${JSON.stringify(visualContentBrief(content))}. Current story: ${JSON.stringify(rejected)}. Frame-review defects: ${JSON.stringify(feedback)}. Allowed repair targets: ${JSON.stringify(targets ?? "the smallest unit necessary")}.
 Return the complete corrected VisualStory JSON. Improve the visual explanation and motion choreography, not just the schema. Make the causal action obvious, preserve object identity and spatial continuity, and let each changed motion settle cleanly into the next beat. Favor fewer, larger, readable movements. Do not add decoration to compensate for unclear logic. Preserve valid object IDs, asset intents and primitive specifications. Change only listed beats and objects when targets are supplied. Never reset the scene, teleport objects, or add executable code.`,
     visualPlanSchema,
   );

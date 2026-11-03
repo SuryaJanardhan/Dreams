@@ -19,6 +19,7 @@ import {
 import {
   safeVisualBox,
   safeVisualIdentifier,
+  visualContentBrief,
 } from "../src/automation/visual-planning/index.js";
 
 test("AI visual identifiers and undersized boxes normalize deterministically", () => {
@@ -140,6 +141,13 @@ test("omitted optional visual collections become empty arrays", () => {
   assert.deepEqual(parsed.camera, []);
   assert.deepEqual(parsed.assetIntents, []);
   assert.deepEqual(parsed.proposedPrimitives, []);
+});
+
+test("visual planning receives only visual-relevant content fields", () => {
+  const brief = visualContentBrief(content);
+  assert.deepEqual(Object.keys(brief), ["type", "title", "narration", "beats"]);
+  assert.equal("research" in brief, false);
+  assert.equal("copies" in brief, false);
 });
 
 const content: ContentPlan = {
