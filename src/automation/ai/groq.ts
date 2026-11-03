@@ -1,0 +1,128 @@
+import { readFile } from "node:fs/promises";
+import { z } from "zod";
+import type { StructuredGenerator } from "./index.js";
+import { Http, HttpError } from "../operations/http.js";
+
+export interface GroqConfig {
+  keys: readonly string[];
+  model: string;
+  baseUrl?: string;
+}
+
+const responseSchema = z.object({
+  choices: z
+    .array(z.object({ message: z.object({ content: z.string().min(1) }) }))
+    .min(1),
+});
+
+export class Groq implements StructuredGenerator {
+  private cursor = 0;
+  private readonly unavailable = new Set<string>();
+  private readonly baseUrl: string;
+  constructor(
+    private readonly config: GroqConfig,
+    private readonly http: Http,
+  ) {
+    if (!config.keys.length) throw new Error("Groq key pool is empty");
+    if (new Set(config.keys).size !== config.keys.length)
+      throw new Error("Groq key pool contains duplicates");
+    this.baseUrl = (config.baseUrl ?? "https://api.groq.com/openai/v1").replace(
+      /\/$/,
+      "",
+    );
+  }
+  private orderedKeys() {
+    const start = this.cursor;
+    this.cursor = (this.cursor + 1) % this.config.keys.length;
+    return this.config.keys.map(
+      (_, offset) =>
+        this.config.keys[(start + offset) % this.config.keys.length]!,
+    );
+  }
+  private async complete<T>(messages: unknown[], schema: z.ZodType<T>) {
+    const errors: string[] = [];
+    for (const key of this.orderedKeys()) {
+      if (this.unavailable.has(key)) continue;
+      try {
+        const response = await this.http.json(
+          `${this.baseUrl}/chat/completions`,
+          responseSchema,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${key}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model: this.config.model,
+              messages,
+              response_format: { type: "json_object" },
+              reasoning_effort: "none",
+              temperature: 0.2,
+              stream: false,
+            }),
+            timeout: 180000,
+          },
+        );
+        const value: unknown = JSON.parse(
+          response.choices[0]?.message.content ?? "",
+        );
+        return schema.parse(value);
+      } catch (error) {
+        if (
+          error instanceof HttpError &&
+          [401, 403, 429, 500, 502, 503, 504].includes(error.status)
+        ) {
+          errors.push(error.message);
+          if ([401, 403, 429].includes(error.status)) this.unavailable.add(key);
+          continue;
+        }
+        throw error;
+      }
+    }
+    throw new Error(
+      `Groq key pool unavailable: ${errors.join("; ") || "all keys disabled"}`,
+    );
+  }
+  generate<T>(prompt: string, schema: z.ZodType<T>): Promise<T> {
+    return this.complete(
+      [
+        {
+          role: "system",
+          content:
+            "Return only one valid JSON object matching the requested structure. Do not include Markdown fences or commentary.",
+        },
+        { role: "user", content: prompt },
+      ],
+      schema,
+    );
+  }
+  async vision<T>(
+    prompt: string,
+    imagePath: string,
+    mimeType: "image/jpeg" | "image/png",
+    schema: z.ZodType<T>,
+  ): Promise<T> {
+    const image = (await readFile(imagePath)).toString("base64");
+    return this.complete(
+      [
+        {
+          role: "system",
+          content:
+            "Inspect the attached image and return only one valid JSON object matching the requested structure.",
+        },
+        {
+          role: "user",
+          content: [
+            { type: "text", text: prompt },
+            {
+              type: "image_url",
+              image_url: { url: `data:${mimeType};base64,${image}` },
+            },
+          ],
+        },
+      ],
+      schema,
+    );
+  }
+}
