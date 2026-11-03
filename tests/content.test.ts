@@ -2,10 +2,31 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   gradeContent,
+  normalizeGeneratedPlan,
   parseGroundedJson,
   requireExplanationQuality,
   safeIdentifier,
 } from "../src/automation/content/index.js";
+
+test("overflow beats merge into the final beat without losing narration order", () => {
+  const beats = Array.from({ length: 10 }, (_, index) => ({
+    id: `beat-${index + 1}`,
+    text: `part-${index + 1}`,
+    purpose: `Explain the mechanism part ${index + 1}`,
+  }));
+  const normalized = normalizeGeneratedPlan({ beats }) as {
+    beats: typeof beats;
+  };
+  assert.equal(normalized.beats.length, 8);
+  assert.equal(
+    normalized.beats.map((beat) => beat.text).join(" "),
+    beats.map((beat) => beat.text).join(" "),
+  );
+  assert.deepEqual(
+    normalized.beats.slice(0, 7).map((beat) => beat.id),
+    beats.slice(0, 7).map((beat) => beat.id),
+  );
+});
 test("AI beat identifiers are normalized without changing content", () => {
   assert.equal(
     safeIdentifier("beat_1: shared purpose"),
