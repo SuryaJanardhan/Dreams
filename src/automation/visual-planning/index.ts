@@ -210,7 +210,11 @@ export function normalizeGeneratedVisualPlan(value: unknown): unknown {
   // Qwen occasionally omits the protocol version on a repair response or
   // serializes it as text. There is only one supported visual-story
   // protocol, so normalize both forms at the provider boundary.
-  if (root.version === undefined || root.version === null || root.version === "2")
+  if (
+    root.version === undefined ||
+    root.version === null ||
+    (typeof root.version === "string" && Number(root.version.trim()) === 2)
+  )
     root.version = 2;
   for (const optionalCollection of [
     "camera",
