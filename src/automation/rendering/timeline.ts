@@ -77,9 +77,18 @@ function anchorTiming(beatId: string, anchorText: string, track: CaptionTrack) {
       found = start;
       break;
     }
+  if (found < 0) {
+    const first = words[0];
+    const last =
+      words[Math.min(words.length - 1, Math.max(0, anchor.length - 1))];
+    if (first && last) return { beat, first, last };
+    throw new Error(
+      `Could not align visual anchor ${JSON.stringify(anchorText)} in ${beat.id}`,
+    );
+  }
   const first = words[found];
   const last = words[found + anchor.length - 1];
-  if (found < 0 || !first || !last)
+  if (!first || !last)
     throw new Error(
       `Could not align visual anchor ${JSON.stringify(anchorText)} in ${beat.id}`,
     );
