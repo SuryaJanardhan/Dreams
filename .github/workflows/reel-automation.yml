@@ -137,7 +137,9 @@ jobs:
           cache-dependency-path: voicebox/requirements-automation.txt
       - name: System media tools
         if: steps.gate.outputs.ready == 'true'
-        run: echo "$(dirname "$(node -p \"require('ffmpeg-static')\")")" >> "$GITHUB_PATH"
+        run: |
+          FFMPEG_BIN="$(node -e "process.stdout.write(require('ffmpeg-static'))")"
+          echo "$(dirname "$FFMPEG_BIN")" >> "$GITHUB_PATH"
       - name: Browser renderer
         if: steps.gate.outputs.ready == 'true'
         run: npx playwright install chromium --with-deps
