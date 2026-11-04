@@ -501,6 +501,8 @@ export function validateVisualPlan(plan: VisualPlan, content: ContentPlan) {
   for (const beat of content.beats)
     if (!seenBeats.has(beat.id))
       errors.push(`Content beat ${beat.id} has no visual action`);
+  if (visible.size === 0)
+    errors.push("Continuous visual story cannot leave the diagram empty");
   for (const camera of plan.camera) {
     const beat = content.beats.find((item) => item.id === camera.beatId);
     if (!beat)

@@ -274,6 +274,30 @@ test("continuous stories enforce anchors, lifecycle, ordering and references", (
   );
 });
 
+test("continuous stories cannot finish with an empty canvas", () => {
+  assert.throws(
+    () =>
+      validateVisualPlan(
+        {
+          ...plan,
+          timeline: [
+            ...plan.timeline,
+            {
+              id: "remove-both",
+              beatId: "stream",
+              action: "remove",
+              objectIds: ["queue", "stream"],
+              anchor: "stream",
+              motion: "soft-exit",
+            },
+          ],
+        },
+        content,
+      ),
+    /diagram empty/i,
+  );
+});
+
 test("visual schemas reject executable escape fields and invalid primitives", () => {
   assert.throws(
     () => visualPlanSchema.parse({ ...plan, source: "fetch('https://bad')" }),
