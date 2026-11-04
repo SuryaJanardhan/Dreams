@@ -304,7 +304,10 @@ async function inspectFrame(page: Page, expected: FrameState) {
   result.errors.push(...objectGeometryErrors(dynamicExpected, result.actual));
   const screenshot = await page.locator("#scene").screenshot({ type: "png" });
   const stats = await sharp(screenshot).stats();
-  if (stats.channels.every((channel) => channel.stdev < 0.5))
+  const expectedVisible = expected.objects.some(
+    (object) => object.visible && object.opacity > 0.05,
+  );
+  if (expectedVisible && stats.channels.every((channel) => channel.stdev < 0.5))
     result.errors.push("Blank or uniform diagram frame");
   if (result.errors.length)
     throw new Error([...new Set(result.errors)].join("; "));
