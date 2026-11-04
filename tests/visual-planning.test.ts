@@ -180,6 +180,13 @@ test("partial generated timelines are accepted before deterministic completion",
   assert.equal(visualPlanSchema.parse(plan).timeline.length, 1);
 });
 
+test("repair responses that encode version as text normalize to the domain version", () => {
+  const value = normalizeGeneratedVisualPlan({ version: "2" }) as {
+    version: number;
+  };
+  assert.equal(value.version, 2);
+});
+
 test("timeline values emitted as objects become bounded display text", () => {
   const raw = {
     version: 2,

@@ -207,6 +207,7 @@ function shortAnchor(value: unknown): unknown {
 export function normalizeGeneratedVisualPlan(value: unknown): unknown {
   if (!value || typeof value !== "object" || Array.isArray(value)) return value;
   const root = structuredClone(value) as Record<string, unknown>;
+  if (root.version === "2") root.version = 2;
   for (const optionalCollection of [
     "camera",
     "assetIntents",
