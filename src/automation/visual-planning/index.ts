@@ -222,6 +222,28 @@ export function normalizeGeneratedVisualPlan(value: unknown): unknown {
     "proposedPrimitives",
   ])
     if (root[optionalCollection] === undefined) root[optionalCollection] = [];
+  if (Array.isArray(root.world)) {
+    const primitiveIds = new Set(
+      Array.isArray(root.proposedPrimitives)
+        ? root.proposedPrimitives
+            .filter((item) => item && typeof item === "object")
+            .map((item) => (item as Record<string, unknown>).id)
+        : [],
+    );
+    root.world = root.world.map((item) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) return item;
+      const object = item as Record<string, unknown>;
+      // Composite is only valid when a trusted primitive is supplied. A
+      // missing primitive is safely rendered as a plain semantic rectangle.
+      if (
+        object.kind === "composite" &&
+        (typeof object.primitiveId !== "string" ||
+          !primitiveIds.has(object.primitiveId))
+      )
+        return { ...object, kind: "rect", primitiveId: undefined };
+      return object;
+    });
+  }
   if (Array.isArray(root.timeline))
     root.timeline = root.timeline.map((entry, index) => {
       if (!entry || typeof entry !== "object" || Array.isArray(entry))
