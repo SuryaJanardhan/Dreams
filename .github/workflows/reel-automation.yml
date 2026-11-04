@@ -22,7 +22,9 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: dreams-production
+  # Keep scheduled/manual production runs serialized, but do not let an
+  # unrelated push-triggered validation run hold their lock.
+  group: dreams-production-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: false
 jobs:
   automation:
