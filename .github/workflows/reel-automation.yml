@@ -137,7 +137,7 @@ jobs:
           cache-dependency-path: voicebox/requirements-automation.txt
       - name: System media tools
         if: steps.gate.outputs.ready == 'true'
-        run: sudo apt-get install -y --no-install-recommends ffmpeg
+        run: echo "$(dirname "$(node -p \"require('ffmpeg-static')\")")" >> "$GITHUB_PATH"
       - name: Browser renderer
         if: steps.gate.outputs.ready == 'true'
         run: npx playwright install chromium --with-deps
