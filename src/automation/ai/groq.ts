@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { z } from "zod";
-import type { StructuredGenerator } from "./index.js";
+import type { ResearchGenerator, StructuredGenerator } from "./index.js";
+import type { ResearchPacket } from "../domain.js";
 import { Http, HttpError } from "../operations/http.js";
 
 export interface GroqConfig {
@@ -26,7 +27,7 @@ const responseSchema = z.object({
     .min(1),
 });
 
-export class Groq implements StructuredGenerator {
+export class Groq implements StructuredGenerator, ResearchGenerator {
   private cursor = 0;
   private readonly unavailable = new Set<string>();
   private readonly baseUrl: string;
@@ -136,6 +137,9 @@ export class Groq implements StructuredGenerator {
       schema,
       options.maxCompletionTokens ?? 1024,
     );
+  }
+  async grounded<T>(prompt: string, schema: z.ZodType<T>): Promise<{ value: T; sources: ResearchPacket["sources"] }> {
+    return { value: await this.generate(prompt, schema), sources: [] };
   }
   async vision<T>(
     prompt: string,

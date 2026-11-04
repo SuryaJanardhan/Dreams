@@ -3,7 +3,6 @@ import { resolve } from "node:path";
 import { loadConfig, redact } from "./operations/config.js";
 import { Http } from "./operations/http.js";
 import { Groq } from "./ai/groq.js";
-import { GeminiResearch } from "./ai/gemini.js";
 import { command, probe } from "./operations/media.js";
 import { createNotifier } from "./operations/email.js";
 import { createWorkspace, assertAsset } from "./workspace/index.js";
@@ -60,11 +59,6 @@ export async function main() {
       finalizing ? finalizeController.signal : production.signal;
     const http = new Http(signal);
     const sheets = new Sheets(config, http);
-    const gemini = new GeminiResearch(
-      http,
-      config.GEMINI_SCRIPT_MODEL,
-      config.GEMINI_API_KEY,
-    );
     const groq = new Groq(
       { keys: config.GROQ_API_KEYS, model: config.GROQ_MODEL },
       http,
@@ -110,7 +104,7 @@ export async function main() {
         return sheets.pause(redact(reason, secrets));
       },
       workspace: (id) => createWorkspace(config.root, id),
-      research: createResearch(gemini),
+      research: createResearch(groq),
       content: createContent(groq),
       promotedPrimitives: () => sheets.promotedPrimitives(parsePrimitiveSpec),
       visualPlan: createVisualPlan(groq),
@@ -121,7 +115,7 @@ export async function main() {
           : undefined;
         return sheets.recordPrimitiveReviews(jobId, specs, artifactUrl);
       },
-      assets: createAssets(config, http, gemini, groq),
+      assets: createAssets(config, http, groq, groq),
       voice: createVoice(config, signal),
       captions: createCaptions(config, http),
       render: (plan, visualPlan, assets, narration, captions, workspace) =>

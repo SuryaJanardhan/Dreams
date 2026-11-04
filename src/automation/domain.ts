@@ -47,7 +47,7 @@ export interface SourceLink {
   title: string;
 }
 export interface ResearchPacket {
-  mode: "primary-evidence" | "gemini-best-effort";
+  mode: "primary-evidence" | "provider-best-effort" | "gemini-best-effort";
   summary: string;
   sources: SourceLink[];
 }
