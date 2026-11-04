@@ -9,7 +9,7 @@ const serviceAccount = z.object({
 const environment = z.object({
   GOOGLE_SHEET_ID: z.string().min(1),
   GOOGLE_CREDENTIALS: z.string().min(1),
-  GEMINI_API_KEY: z.string().min(1),
+  GEMINI_API_KEY: z.string().default(""),
   GROQ_API_KEYS: z
     .string()
     .transform((value) =>
@@ -102,6 +102,7 @@ export function loadConfig(
     root: resolve(root),
     secrets: [
       ...keys.map((key) => parsed.data[key]),
+      ...(parsed.data.GEMINI_API_KEY ? [parsed.data.GEMINI_API_KEY] : []),
       ...parsed.data.GROQ_API_KEYS,
       credentials.private_key,
     ],

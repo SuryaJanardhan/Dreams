@@ -264,7 +264,12 @@ async function main() {
       },
     },
   ];
-  const publishingProviders = new Set(["YouTube", "Instagram", "Facebook"]);
+  const publishingProviders = new Set([
+    "YouTube",
+    "Instagram",
+    "Facebook",
+    "Gemini grounded research",
+  ]);
   const previewPhase = process.env.AUTOMATION_PHASE === "preapproval";
   const activeChecks = previewPhase
     ? checks.filter((check) => !publishingProviders.has(check.provider))

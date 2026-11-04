@@ -19,11 +19,11 @@ function uniqueSources(
   });
 }
 
-export function createResearch(gemini: ResearchGenerator) {
+export function createResearch(groq: ResearchGenerator) {
   return (task: Task): Promise<ResearchPacket> =>
     twice(async (attempt) => {
       try {
-        const grounded = await gemini.grounded(
+        const grounded = await groq.grounded(
           `Research the engineering topic ${JSON.stringify(task.idea)} for a short explanation. Context: ${JSON.stringify(task.description)}. User-provided source URLs: ${JSON.stringify(task.sourceUrls)}. Prefer official product documentation, specifications, standards, and primary technical sources. Separate stable fundamentals from version-sensitive claims. Return JSON {summary}. Keep the summary factual and useful for a script writer; do not write the reel script.`,
           researchSchema,
         );
@@ -33,18 +33,18 @@ export function createResearch(gemini: ResearchGenerator) {
         }));
         const sources = uniqueSources([...provided, ...grounded.sources]);
         return {
-          mode: sources.length ? "primary-evidence" : "gemini-best-effort",
+          mode: sources.length ? "primary-evidence" : "provider-best-effort",
           summary: grounded.value.summary,
           sources,
         };
       } catch (error) {
         if (attempt === 0) throw error;
-        const fallback = await gemini.generate(
+        const fallback = await groq.generate(
           `Give the best technically accurate background for ${JSON.stringify(task.idea)} using stable engineering knowledge. Context: ${JSON.stringify(task.description)}. Return JSON {summary}. Clearly avoid invented versions, measurements, quotations, or source claims.`,
           researchSchema,
         );
         return {
-          mode: "gemini-best-effort",
+          mode: "provider-best-effort",
           summary: fallback.summary,
           sources: task.sourceUrls.map((url) => ({
             url,
