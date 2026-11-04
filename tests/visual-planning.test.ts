@@ -144,6 +144,42 @@ test("omitted optional visual collections become empty arrays", () => {
   assert.deepEqual(parsed.proposedPrimitives, []);
 });
 
+test("partial generated timelines are accepted before deterministic completion", () => {
+  const plan = {
+    version: 2,
+    world: [
+      {
+        id: "client",
+        kind: "client",
+        label: "Client",
+        semantic: "active",
+        box: { x: 20, y: 20, width: 180, height: 120 },
+      },
+      {
+        id: "server",
+        kind: "server",
+        label: "Server",
+        semantic: "structure",
+        box: { x: 400, y: 20, width: 180, height: 120 },
+      },
+    ],
+    timeline: [
+      {
+        id: "one",
+        beatId: "shared",
+        action: "create",
+        objectIds: ["client", "server"],
+        anchor: "Both",
+        motion: "soft-enter",
+      },
+    ],
+    camera: [],
+    assetIntents: [],
+    proposedPrimitives: [],
+  };
+  assert.equal(visualPlanSchema.parse(plan).timeline.length, 1);
+});
+
 test("timeline values emitted as objects become bounded display text", () => {
   const raw = {
     version: 2,
