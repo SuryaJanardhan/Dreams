@@ -11,7 +11,7 @@ import type {
 } from "../domain.js";
 import type { Config } from "../operations/config.js";
 import type { Http } from "../operations/http.js";
-import type { Gemini } from "../content/index.js";
+import type { ResearchGenerator } from "../ai/index.js";
 import type { StructuredGenerator } from "../ai/index.js";
 
 const candidatesSchema = z.object({
@@ -82,7 +82,7 @@ async function resolveImage(http: Http, pageRaw: string, explicit?: string) {
 export function createAssets(
   config: Config,
   http: Http,
-  gemini: Gemini,
+  gemini: ResearchGenerator,
   groq: StructuredGenerator,
 ) {
   return async (
@@ -97,8 +97,6 @@ export function createAssets(
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
           const search = await gemini.grounded(
-            config.GEMINI_SCRIPT_MODEL,
-            config.GEMINI_API_KEY,
             `Find an image source for this technical explanation. Topic: ${JSON.stringify(task.idea)}. Asset intent: ${JSON.stringify(intent)}. Explanation: ${JSON.stringify(content.narration)}. User-provided sources: ${JSON.stringify(task.sourceUrls)}. Prefer an official documentation, product, standards, or repository page. A third-party page is allowed only when it explicitly states reusable licensing. Return JSON {candidates:[{pageUrl,imageUrl?,official,rightsEvidence}]}. Do not return social media, stock preview, tracking, data, blob, or search-result URLs.`,
             candidatesSchema,
           );

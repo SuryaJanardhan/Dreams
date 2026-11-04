@@ -1,8 +1,7 @@
 import { z } from "zod";
 import type { ResearchPacket, Task } from "../domain.js";
-import type { Config } from "../operations/config.js";
 import { twice } from "../operations/http.js";
-import type { Gemini } from "../content/index.js";
+import type { ResearchGenerator } from "../ai/index.js";
 
 const researchSchema = z.object({
   summary: z.string().min(40).max(5000),
@@ -20,13 +19,11 @@ function uniqueSources(
   });
 }
 
-export function createResearch(config: Config, gemini: Gemini) {
+export function createResearch(gemini: ResearchGenerator) {
   return (task: Task): Promise<ResearchPacket> =>
     twice(async (attempt) => {
       try {
         const grounded = await gemini.grounded(
-          config.GEMINI_SCRIPT_MODEL,
-          config.GEMINI_API_KEY,
           `Research the engineering topic ${JSON.stringify(task.idea)} for a short explanation. Context: ${JSON.stringify(task.description)}. User-provided source URLs: ${JSON.stringify(task.sourceUrls)}. Prefer official product documentation, specifications, standards, and primary technical sources. Separate stable fundamentals from version-sensitive claims. Return JSON {summary}. Keep the summary factual and useful for a script writer; do not write the reel script.`,
           researchSchema,
         );
@@ -43,8 +40,6 @@ export function createResearch(config: Config, gemini: Gemini) {
       } catch (error) {
         if (attempt === 0) throw error;
         const fallback = await gemini.generate(
-          config.GEMINI_SCRIPT_MODEL,
-          config.GEMINI_API_KEY,
           `Give the best technically accurate background for ${JSON.stringify(task.idea)} using stable engineering knowledge. Context: ${JSON.stringify(task.description)}. Return JSON {summary}. Clearly avoid invented versions, measurements, quotations, or source claims.`,
           researchSchema,
         );

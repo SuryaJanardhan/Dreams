@@ -3,11 +3,12 @@ import { resolve } from "node:path";
 import { loadConfig, redact } from "./operations/config.js";
 import { Http } from "./operations/http.js";
 import { Groq } from "./ai/groq.js";
+import { GeminiResearch } from "./ai/gemini.js";
 import { command, probe } from "./operations/media.js";
 import { createNotifier } from "./operations/email.js";
 import { createWorkspace, assertAsset } from "./workspace/index.js";
 import { Sheets } from "./sheets/index.js";
-import { Gemini, createContent } from "./content/index.js";
+import { createContent } from "./content/index.js";
 import { createResearch } from "./research/index.js";
 import {
   createVisualPlan,
@@ -59,7 +60,11 @@ export async function main() {
       finalizing ? finalizeController.signal : production.signal;
     const http = new Http(signal);
     const sheets = new Sheets(config, http);
-    const gemini = new Gemini(http);
+    const gemini = new GeminiResearch(
+      http,
+      config.GEMINI_SCRIPT_MODEL,
+      config.GEMINI_API_KEY,
+    );
     const groq = new Groq(
       { keys: config.GROQ_API_KEYS, model: config.GROQ_MODEL },
       http,
@@ -105,7 +110,7 @@ export async function main() {
         return sheets.pause(redact(reason, secrets));
       },
       workspace: (id) => createWorkspace(config.root, id),
-      research: createResearch(config, gemini),
+      research: createResearch(gemini),
       content: createContent(groq),
       promotedPrimitives: () => sheets.promotedPrimitives(parsePrimitiveSpec),
       visualPlan: createVisualPlan(groq),

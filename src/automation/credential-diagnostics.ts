@@ -106,6 +106,34 @@ async function main() {
       },
     },
     {
+      provider: "Gemini grounded research",
+      async run() {
+        const result = await response(
+          `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.GEMINI_SCRIPT_MODEL)}:generateContent`,
+          {
+            method: "POST",
+            headers: {
+              "x-goog-api-key": config.GEMINI_API_KEY,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              contents: [
+                { role: "user", parts: [{ text: "Return JSON {status: ok}" }] },
+              ],
+              generationConfig: {
+                responseMimeType: "application/json",
+                maxOutputTokens: 8,
+              },
+            }),
+          },
+          60_000,
+        );
+        const value: unknown = await result.json();
+        z.object({ candidates: z.array(z.unknown()).min(1) }).parse(value);
+        return `model accepted: ${config.GEMINI_SCRIPT_MODEL}`;
+      },
+    },
+    {
       provider: "AssemblyAI",
       async run() {
         const result = await response(
