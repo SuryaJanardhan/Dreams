@@ -290,7 +290,28 @@ export function completeVisualPlanActions(
       },
     ];
   });
-  return { ...plan, timeline };
+  const visible = new Set<string>();
+  const expanded: TimelineAction[] = [];
+  for (const action of timeline) {
+    const introducing = new Set(["create", "reveal", "draw"]);
+    const missing = action.objectIds.filter((id) => !visible.has(id));
+    if (missing.length && !introducing.has(action.action))
+      for (const id of missing)
+        expanded.push({
+          id: `auto-reveal-${id}-${action.id}`,
+          beatId: action.beatId,
+          action: "reveal",
+          objectIds: [id],
+          anchor: action.anchor,
+          motion: "soft-enter",
+        });
+    expanded.push(action);
+    if (introducing.has(action.action))
+      action.objectIds.forEach((id) => visible.add(id));
+    if (action.action === "remove")
+      action.objectIds.forEach((id) => visible.delete(id));
+  }
+  return { ...plan, timeline: expanded };
 }
 
 const rawVisualPlanSchema = z

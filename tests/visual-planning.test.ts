@@ -233,6 +233,30 @@ test("timeline values emitted as objects become bounded display text", () => {
   assert.equal(normalized.timeline[0]?.value, '{"state":"ready"}');
 });
 
+test("first use of an object gets an introduction action", () => {
+  const completed = completeVisualPlanActions(
+    {
+      ...plan,
+      timeline: [
+        {
+          ...plan.timeline[0]!,
+          objectIds: ["queue"],
+        },
+        {
+          ...plan.timeline[1]!,
+          objectIds: ["stream"],
+        },
+        {
+          ...plan.timeline[2]!,
+          objectIds: ["stream"],
+        },
+      ],
+    },
+    content,
+  );
+  assert.ok(completed.timeline.some((action) => action.action === "reveal"));
+});
+
 test("visual planning receives only visual-relevant content fields", () => {
   const brief = visualContentBrief(content);
   assert.deepEqual(Object.keys(brief), ["type", "title", "narration", "beats"]);
