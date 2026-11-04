@@ -207,7 +207,11 @@ function shortAnchor(value: unknown): unknown {
 export function normalizeGeneratedVisualPlan(value: unknown): unknown {
   if (!value || typeof value !== "object" || Array.isArray(value)) return value;
   const root = structuredClone(value) as Record<string, unknown>;
-  if (root.version === "2") root.version = 2;
+  // Qwen occasionally omits the protocol version on a repair response or
+  // serializes it as text. There is only one supported visual-story
+  // protocol, so normalize both forms at the provider boundary.
+  if (root.version === undefined || root.version === null || root.version === "2")
+    root.version = 2;
   for (const optionalCollection of [
     "camera",
     "assetIntents",
