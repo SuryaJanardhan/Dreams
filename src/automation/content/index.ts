@@ -197,6 +197,30 @@ const identifierSchema = z
 export function normalizeGeneratedPlan(value: unknown): unknown {
   if (!value || typeof value !== "object" || Array.isArray(value)) return value;
   const plan = structuredClone(value) as Record<string, unknown>;
+  if (plan.copies && typeof plan.copies === "object" && !Array.isArray(plan.copies)) {
+    const copies = plan.copies as Record<string, unknown>;
+    const seed = Object.values(copies).find(
+      (copy) => copy && typeof copy === "object" && !Array.isArray(copy),
+    ) as Record<string, unknown> | undefined;
+    for (const platform of platforms) {
+      const current = copies[platform];
+      if (current && typeof current === "object" && !Array.isArray(current)) continue;
+      copies[platform] = {
+        title:
+          typeof seed?.title === "string"
+            ? seed.title.slice(0, 100)
+            : typeof plan.title === "string"
+              ? plan.title.slice(0, 100)
+              : "Technical explainer",
+        description:
+          typeof seed?.description === "string"
+            ? seed.description.slice(0, 2000)
+            : typeof plan.narration === "string"
+              ? plan.narration.slice(0, 2000)
+              : "A concise technical explainer.",
+      };
+    }
+  }
   if (!Array.isArray(plan.beats) || plan.beats.length <= 8) return plan;
   const beats = plan.beats as unknown[];
   const retained = beats.slice(0, 7);
