@@ -228,6 +228,14 @@ export function normalizeGeneratedVisualPlan(value: unknown): unknown {
             : `action-${index + 1}`,
         anchor: shortAnchor(action.anchor),
         motion,
+        ...(action.value === undefined
+          ? {}
+          : {
+              value:
+                typeof action.value === "string"
+                  ? action.value.slice(0, 120)
+                  : JSON.stringify(action.value).slice(0, 120),
+            }),
       };
     });
   if (Array.isArray(root.camera))

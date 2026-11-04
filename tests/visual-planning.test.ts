@@ -144,6 +144,59 @@ test("omitted optional visual collections become empty arrays", () => {
   assert.deepEqual(parsed.proposedPrimitives, []);
 });
 
+test("timeline values emitted as objects become bounded display text", () => {
+  const raw = {
+    version: 2,
+    world: [
+      {
+        id: "client",
+        kind: "client",
+        label: "Client",
+        semantic: "active",
+        box: { x: 20, y: 20, width: 180, height: 120 },
+      },
+      {
+        id: "server",
+        kind: "server",
+        label: "Server",
+        semantic: "structure",
+        box: { x: 400, y: 20, width: 180, height: 120 },
+      },
+    ],
+    timeline: [
+      {
+        id: "create",
+        beatId: "shared",
+        action: "create",
+        objectIds: ["client", "server"],
+        anchor: "Both",
+        motion: "soft-enter",
+        value: { state: "ready" },
+      },
+      {
+        id: "queue",
+        beatId: "queue",
+        action: "mutate",
+        objectIds: ["client"],
+        anchor: "queue",
+        motion: "state-change",
+      },
+      {
+        id: "stream",
+        beatId: "stream",
+        action: "focus",
+        objectIds: ["server"],
+        anchor: "stream",
+        motion: "focus",
+      },
+    ],
+  };
+  const normalized = normalizeGeneratedVisualPlan(raw) as {
+    timeline: Array<{ value?: string }>;
+  };
+  assert.equal(normalized.timeline[0]?.value, '{"state":"ready"}');
+});
+
 test("visual planning receives only visual-relevant content fields", () => {
   const brief = visualContentBrief(content);
   assert.deepEqual(Object.keys(brief), ["type", "title", "narration", "beats"]);
