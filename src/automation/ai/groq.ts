@@ -135,7 +135,10 @@ export class Groq implements StructuredGenerator, ResearchGenerator {
         { role: "user", content: prompt },
       ],
       schema,
-      options.maxCompletionTokens ?? 1024,
+      // Groq's free on-demand tier enforces a 1,000 output-token/minute
+      // organization cap. Keep individual calls below that ceiling so a
+      // valid response is possible even when several stages share the pool.
+      options.maxCompletionTokens ?? 768,
     );
   }
   async grounded<T>(prompt: string, schema: z.ZodType<T>): Promise<{ value: T; sources: ResearchPacket["sources"] }> {
@@ -167,7 +170,7 @@ export class Groq implements StructuredGenerator, ResearchGenerator {
         },
       ],
       schema,
-      2048,
+      768,
     );
   }
 }
