@@ -8,6 +8,7 @@ import type {
   Task,
   VisualBox,
   VisualPlan,
+  TimelineAction,
 } from "../domain.js";
 import { twice } from "../operations/http.js";
 import type { StructuredGenerator } from "../ai/index.js";
