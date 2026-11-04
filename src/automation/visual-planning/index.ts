@@ -233,6 +233,8 @@ export function normalizeGeneratedVisualPlan(value: unknown): unknown {
     root.world = root.world.map((item) => {
       if (!item || typeof item !== "object" || Array.isArray(item)) return item;
       const object = item as Record<string, unknown>;
+      if (!primitiveKinds.includes(object.kind as PrimitiveKind))
+        object.kind = "label";
       // Composite is only valid when a trusted primitive is supplied. A
       // missing primitive is safely rendered as a plain semantic rectangle.
       if (
