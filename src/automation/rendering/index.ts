@@ -505,7 +505,7 @@ export async function renderVideo(
         resolve(config.root, "assets/Bgm.m4a"),
         ...cueInputs,
         "-filter_complex",
-        `${cueMix}[2:a]volume=0.06,afade=t=in:st=0:d=0.35,afade=t=out:st=${Math.max(0, narration.duration - 0.6)}:d=0.6[music];[music][1:a]sidechaincompress=threshold=0.015:ratio=8:attack=10:release=300[ducked];[1:a][ducked][cues]amix=inputs=3:duration=first:normalize=0,alimiter=limit=0.78:level=false[mix]`,
+        `${cueMix}[2:a]volume=0.06,afade=t=in:st=0:d=0.35,afade=t=out:st=${Math.max(0, narration.duration - 0.6)}:d=0.6[music];[music][1:a]sidechaincompress=threshold=0.015:ratio=8:attack=10:release=300[ducked];[1:a][ducked][cues]amix=inputs=3:duration=first:normalize=0,alimiter=limit=0.78:level=false,loudnorm=I=-16:TP=-1.5:LRA=11[mix]`,
         "-map",
         "0:v",
         "-map",
