@@ -7,6 +7,7 @@ import type {
 } from "../src/automation/domain.js";
 import {
   assertRepairScope,
+  completeVisualPlanActions,
   normalizeGeneratedVisualPlan,
   parsePrimitiveSpec,
   validateVisualPlan,
@@ -228,6 +229,19 @@ const plan: VisualPlan = {
   assetIntents: [],
   proposedPrimitives: [],
 };
+
+test("missing beat actions are completed with opening-anchored motion", () => {
+  const completed = completeVisualPlanActions(
+    { ...plan, timeline: [plan.timeline[0]!] },
+    content,
+  );
+  assert.deepEqual(
+    completed.timeline.map((action) => action.beatId),
+    ["shared", "queue", "stream"],
+  );
+  assert.equal(completed.timeline[1]?.anchor, "A queue removes work.");
+  assert.equal(completed.timeline[2]?.anchor, "A stream keeps history.");
+});
 
 test("continuous stories enforce anchors, lifecycle, ordering and references", () => {
   assert.equal(validateVisualPlan(plan, content), plan);

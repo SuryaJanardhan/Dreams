@@ -247,6 +247,44 @@ export function normalizeGeneratedVisualPlan(value: unknown): unknown {
   return root;
 }
 
+function openingAnchor(text: string): string {
+  return text.trim().split(/\s+/).slice(0, 6).join(" ").slice(0, 60);
+}
+export function completeVisualPlanActions(
+  plan: VisualPlan,
+  content: ContentPlan,
+): VisualPlan {
+  const firstObject = plan.world[0]?.id;
+  if (!firstObject) return plan;
+  const byBeat = new Map<string, typeof plan.timeline>();
+  for (const action of plan.timeline) {
+    const group = byBeat.get(action.beatId) ?? [];
+    group.push(action);
+    byBeat.set(action.beatId, group);
+  }
+  const timeline = content.beats.flatMap((beat, index) => {
+    const actions = byBeat.get(beat.id) ?? [];
+    if (actions.length) {
+      return actions.map((action, actionIndex) =>
+        actionIndex === 0
+          ? { ...action, anchor: openingAnchor(beat.text) }
+          : action,
+      );
+    }
+    return [
+      {
+        id: `auto-focus-${beat.id}`,
+        beatId: beat.id,
+        action: index === 0 ? ("reveal" as const) : ("focus" as const),
+        objectIds: [firstObject],
+        anchor: openingAnchor(beat.text),
+        motion: index === 0 ? ("soft-enter" as const) : ("focus" as const),
+      },
+    ];
+  });
+  return { ...plan, timeline };
+}
+
 const rawVisualPlanSchema = z
   .object({
     version: z.literal(2),
@@ -533,7 +571,10 @@ Use trusted kinds ${primitiveKinds.join(", ")}, actions ${operations.join(", ")}
 Canvas is 900×1250. Use polished technical illustration with subtle organic black strokes, white space and restrained semantic fills. Use an image only for a real interface or product and provide a matching official-first asset intent. Use composite only when no trusted kind works. Never request humans, avatars, decorative backgrounds, logos, watermarks, arbitrary colors or executable code. ${error ? `Repair these validation errors: ${error}` : ""}`,
         visualPlanSchema,
       );
-      return validateVisualPlan(result, content);
+      return validateVisualPlan(
+        completeVisualPlanActions(result, content),
+        content,
+      );
     });
 }
 
@@ -549,8 +590,9 @@ export async function repairVisualPlan(
 Return the complete corrected VisualStory JSON. Improve the visual explanation and motion choreography, not just the schema. Make the causal action obvious, preserve object identity and spatial continuity, and let each changed motion settle cleanly into the next beat. Favor fewer, larger, readable movements. Do not add decoration to compensate for unclear logic. Preserve valid object IDs, asset intents and primitive specifications. Change only listed beats and objects when targets are supplied. Never reset the scene, teleport objects, or add executable code.`,
     visualPlanSchema,
   );
-  assertRepairScope(rejected, repaired, targets);
-  return validateVisualPlan(repaired, content);
+  const completed = completeVisualPlanActions(repaired, content);
+  assertRepairScope(rejected, completed, targets);
+  return validateVisualPlan(completed, content);
 }
 
 export function assertRepairScope(
