@@ -139,7 +139,9 @@ jobs:
         if: steps.gate.outputs.ready == 'true'
         run: |
           FFMPEG_BIN="$(node -e "process.stdout.write(require('ffmpeg-static'))")"
+          FFPROBE_BIN="$(node -e "process.stdout.write(require('ffprobe-static').path)")"
           echo "$(dirname "$FFMPEG_BIN")" >> "$GITHUB_PATH"
+          echo "$(dirname "$FFPROBE_BIN")" >> "$GITHUB_PATH"
       - name: Browser renderer
         if: steps.gate.outputs.ready == 'true'
         run: npx playwright install chromium --with-deps
