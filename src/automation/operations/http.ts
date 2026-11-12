@@ -14,14 +14,35 @@ export class HttpError extends Error {
     super(`Provider HTTP ${status} (${host}): ${detail}`);
   }
 }
+export class HttpNetworkError extends Error {
+  constructor(
+    readonly host: string,
+    readonly method: string,
+    cause: unknown,
+  ) {
+    const detail = cause instanceof Error ? cause.message : String(cause);
+    super(`Provider network failure (${method} ${host}): ${detail}`);
+    this.name = "HttpNetworkError";
+  }
+}
 export class Http {
   constructor(private readonly signal: () => AbortSignal) {}
   async response(url: string, request: Request = {}): Promise<Response> {
     const timeout = AbortSignal.timeout(request.timeout ?? 60000);
-    const response = await fetch(url, {
-      ...request,
-      signal: AbortSignal.any([this.signal(), timeout]),
-    });
+    const target = new URL(url);
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        ...request,
+        signal: AbortSignal.any([this.signal(), timeout]),
+      });
+    } catch (error) {
+      throw new HttpNetworkError(
+        target.hostname,
+        request.method ?? "GET",
+        error,
+      );
+    }
     if (!response.ok) {
       let detail = "Request rejected";
       try {
@@ -47,7 +68,7 @@ export class Http {
       } catch {}
       throw new HttpError(
         response.status,
-        new URL(url).hostname,
+        target.hostname,
         detail.slice(0, 1000),
       );
     }
