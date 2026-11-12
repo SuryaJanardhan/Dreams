@@ -70,7 +70,16 @@ jobs:
       - name: Process an approved or rejected review
         if: github.event_name == 'repository_dispatch' || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.operation == 'production')
         id: approval
-        run: npm run approval:process
+        run: |
+          for attempt in 1 2 3; do
+            if npm run approval:process; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              sleep $((attempt * 10))
+            fi
+          done
+          exit 1
       - name: Validate provider credentials without publishing
         if: github.event_name == 'workflow_dispatch' && inputs.operation == 'production' && steps.approval.outputs.handled != 'true'
         run: npm run diagnose:credentials
