@@ -373,7 +373,12 @@ const rawVisualPlanSchema = z
         z
           .object({
             id: identifierSchema,
-            kind: z.enum(primitiveKinds),
+            kind: z.string().transform((value) => {
+              const normalized = value.trim().toLowerCase();
+              return primitiveKinds.includes(normalized as PrimitiveKind)
+                ? normalized
+                : "label";
+            }),
             label: z.string().min(1).max(60),
             semantic: z.enum(semanticColors),
             box: boxSchema,
