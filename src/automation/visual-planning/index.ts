@@ -234,6 +234,8 @@ export function normalizeGeneratedVisualPlan(value: unknown): unknown {
     root.world = root.world.map((item) => {
       if (!item || typeof item !== "object" || Array.isArray(item)) return item;
       const object = item as Record<string, unknown>;
+      if (typeof object.kind === "string")
+        object.kind = object.kind.trim().toLowerCase();
       if (!primitiveKinds.includes(object.kind as PrimitiveKind))
         object.kind = "label";
       if (Array.isArray(object.rows)) {
