@@ -197,6 +197,8 @@ const identifierSchema = z
 export function normalizeGeneratedPlan(value: unknown): unknown {
   if (!value || typeof value !== "object" || Array.isArray(value)) return value;
   const plan = structuredClone(value) as Record<string, unknown>;
+  if (!plan.copies || typeof plan.copies !== "object" || Array.isArray(plan.copies))
+    plan.copies = {};
   if (plan.copies && typeof plan.copies === "object" && !Array.isArray(plan.copies)) {
     const copies = plan.copies as Record<string, unknown>;
     const seed = Object.values(copies).find(
