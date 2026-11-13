@@ -373,10 +373,10 @@ const rawVisualPlanSchema = z
         z
           .object({
             id: identifierSchema,
-            kind: z.string().transform((value) => {
+            kind: z.string().transform((value): PrimitiveKind => {
               const normalized = value.trim().toLowerCase();
               return primitiveKinds.includes(normalized as PrimitiveKind)
-                ? normalized
+                ? (normalized as PrimitiveKind)
                 : "label";
             }),
             label: z.string().min(1).max(60),
