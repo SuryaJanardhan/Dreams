@@ -367,7 +367,9 @@ export function completeVisualPlanActions(
 
 const rawVisualPlanSchema = z
   .object({
-    version: z.literal(2),
+    // The protocol has only one supported version. Provider repair responses
+    // sometimes omit or stringify it, so canonicalize at schema parsing.
+    version: z.preprocess(() => 2, z.literal(2)),
     world: z
       .array(
         z
