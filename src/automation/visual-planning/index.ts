@@ -220,6 +220,7 @@ export function normalizeGeneratedVisualPlan(value: unknown): unknown {
     "camera",
     "assetIntents",
     "proposedPrimitives",
+    "timeline",
   ])
     if (root[optionalCollection] === undefined) root[optionalCollection] = [];
   if (Array.isArray(root.world)) {
@@ -235,6 +236,20 @@ export function normalizeGeneratedVisualPlan(value: unknown): unknown {
       const object = item as Record<string, unknown>;
       if (!primitiveKinds.includes(object.kind as PrimitiveKind))
         object.kind = "label";
+      if (Array.isArray(object.rows)) {
+        object.rows = object.rows.map((row) =>
+          row && typeof row === "object" && !Array.isArray(row)
+            ? Object.values(row as Record<string, unknown>).map(String)
+            : row,
+        );
+      } else if (object.rows && typeof object.rows === "object") {
+        object.rows = Object.values(object.rows as Record<string, unknown>).map(
+          (row) =>
+            row && typeof row === "object" && !Array.isArray(row)
+              ? Object.values(row as Record<string, unknown>).map(String)
+              : row,
+        );
+      }
       // Composite is only valid when a trusted primitive is supplied. A
       // missing primitive is safely rendered as a plain semantic rectangle.
       if (
