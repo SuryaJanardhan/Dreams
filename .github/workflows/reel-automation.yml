@@ -28,7 +28,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   automation:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
       AUTOMATION_BUDGET_MINUTES: "120"
