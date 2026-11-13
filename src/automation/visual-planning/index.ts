@@ -420,7 +420,7 @@ const rawVisualPlanSchema = z
           })
           .strict(),
       )
-      .min(1)
+      .min(0)
       .max(48),
     camera: z
       .array(
