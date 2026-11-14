@@ -202,6 +202,11 @@ export async function main() {
         video,
         workspace,
       ) => {
+        if (localMode) {
+          await mkdir(resolve(config.root, "output"), { recursive: true });
+          await copyFile(video.path, resolve(config.root, "output", "final.mp4"));
+          return video;
+        }
         const review = createVisualQuality(groq, signal);
         try {
           await review(plan, visualPlan, video, workspace);
