@@ -26,6 +26,7 @@ import { ApprovalStore } from "./approval/store.js";
 import { runWorkflow } from "./workflow/index.js";
 import { message } from "./domain.js";
 import type { Task, Progress, PrimitiveSpec } from "./domain.js";
+import type { CaptionTrack } from "./domain.js";
 
 function localFixtureSheets(root: string) {
   const task: Task = {
@@ -53,6 +54,24 @@ function localFixtureSheets(root: string) {
     promotedPrimitives: async () => [] as PrimitiveSpec[],
     recordPrimitiveReviews: async () => "output/primitive-reviews",
   };
+}
+function localFixtureCaptions(plan: import("./domain.js").ContentPlan, narration: import("./domain.js").Narration): CaptionTrack {
+  const words = plan.narration.trim().split(/\s+/).filter(Boolean);
+  const slice = narration.duration / Math.max(1, words.length);
+  const timed = words.map((text, index) => ({
+    text,
+    start: index * slice,
+    end: Math.min(narration.duration, (index + 1) * slice),
+  }));
+  let offset = 0;
+  const beats = plan.beats.map((beat) => {
+    const count = beat.text.trim().split(/\s+/).filter(Boolean).length;
+    const first = timed[offset] ?? timed[0]!;
+    const last = timed[Math.min(timed.length - 1, offset + count - 1)] ?? first;
+    offset += count;
+    return { ...beat, start: first.start, end: last.end };
+  });
+  return { words: timed, beats, duration: narration.duration };
 }
 export async function main() {
   let secrets: string[] = [];
@@ -122,14 +141,15 @@ export async function main() {
         );
         if (reference.format.duration < 2 || reference.format.duration > 30)
           throw new Error("Reference voice sample must be 2–30 seconds");
-        await command(
-          config.PYTHON_EXECUTABLE,
-          [
-            "-c",
-            'import torch, qwen_tts, soundfile; print("Voice engine ready")',
-          ],
-          signal(),
-        );
+        if (!localMode)
+          await command(
+            config.PYTHON_EXECUTABLE,
+            [
+              "-c",
+              'import torch, qwen_tts, soundfile; print("Voice engine ready")',
+            ],
+            signal(),
+          );
         await sheets.prepare();
       },
       intake: () => sheets.intake(),
@@ -163,7 +183,9 @@ export async function main() {
             };
           }
         : createVoice(config, signal),
-      captions: createCaptions(config, http),
+      captions: localMode
+        ? async (plan, narration) => localFixtureCaptions(plan, narration)
+        : createCaptions(config, http),
       render: (plan, visualPlan, assets, narration, captions, workspace) =>
         renderVideo(plan, visualPlan, narration, captions, workspace, {
           config,
