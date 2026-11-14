@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { loadConfig, redact } from "./operations/config.js";
 import { Http } from "./operations/http.js";
 import { Groq } from "./ai/groq.js";
+import { LocalFallbackGenerator } from "./ai/local-fallback.js";
 import { command, probe } from "./operations/media.js";
 import { createNotifier } from "./operations/email.js";
 import { createWorkspace, assertAsset } from "./workspace/index.js";
@@ -59,10 +60,13 @@ export async function main() {
       finalizing ? finalizeController.signal : production.signal;
     const http = new Http(signal);
     const sheets = new Sheets(config, http);
-    const groq = new Groq(
+    const provider = new Groq(
       { keys: config.GROQ_API_KEYS, model: config.GROQ_MODEL },
       http,
     );
+    const groq = process.env.LOCAL_AI_FALLBACK === "true"
+      ? new LocalFallbackGenerator(provider, config.root, signal)
+      : provider;
     const notifier = createNotifier(process.env, secrets);
     const approvalStore = new ApprovalStore(config, http);
     const finalize = () => {
