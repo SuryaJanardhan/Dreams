@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { resolve } from "node:path";
-import { mkdir, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, writeFile } from "node:fs/promises";
 import { loadConfig, redact } from "./operations/config.js";
 import { Http } from "./operations/http.js";
 import { Groq } from "./ai/groq.js";
@@ -247,6 +247,7 @@ export async function main() {
       prepareApproval: async (video, plan, progress) => {
         if (localMode) {
           await mkdir(resolve(config.root, "output"), { recursive: true });
+          await copyFile(video.path, resolve(config.root, "output", "final.mp4"));
           await writeFile(resolve(config.root, "output", "final-video.json"), JSON.stringify(video, null, 2), "utf8");
           return {
             summary: {
