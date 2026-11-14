@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { resolve } from "node:path";
+import { mkdir, writeFile } from "node:fs/promises";
 import { loadConfig, redact } from "./operations/config.js";
 import { Http } from "./operations/http.js";
 import { Groq } from "./ai/groq.js";
@@ -24,6 +25,35 @@ import { createVisualQuality, VisualQualityError } from "./quality/index.js";
 import { ApprovalStore } from "./approval/store.js";
 import { runWorkflow } from "./workflow/index.js";
 import { message } from "./domain.js";
+import type { Task, Progress, PrimitiveSpec } from "./domain.js";
+
+function localFixtureSheets(root: string) {
+  const task: Task = {
+    id: "local-fixture-task",
+    row: 2,
+    idea: "JWT authentication vs server-side sessions",
+    description: "Compare state, revocation, scaling, and tradeoffs for backend engineers.",
+    narration: "",
+    type: "comparison",
+    audience: "Backend engineers and interview candidates",
+    sourceUrls: [],
+  };
+  const save = async (progress: Progress) => {
+    await mkdir(resolve(root, "output"), { recursive: true });
+    await writeFile(resolve(root, "output", "progress.json"), JSON.stringify(progress, null, 2), "utf8");
+  };
+  return {
+    prepare: async () => {},
+    intake: async () => ({ kind: "task" as const, task }),
+    save,
+    pause: async (reason: string) => {
+      await mkdir(resolve(root, "output"), { recursive: true });
+      await writeFile(resolve(root, "output", "paused.json"), JSON.stringify({ reason }, null, 2), "utf8");
+    },
+    promotedPrimitives: async () => [] as PrimitiveSpec[],
+    recordPrimitiveReviews: async () => "output/primitive-reviews",
+  };
+}
 export async function main() {
   let secrets: string[] = [];
   let finalizing = false;
@@ -59,7 +89,8 @@ export async function main() {
     const signal = () =>
       finalizing ? finalizeController.signal : production.signal;
     const http = new Http(signal);
-    const sheets = new Sheets(config, http);
+    const localMode = process.env.LOCAL_FIXTURE_MODE === "true";
+    const sheets = localMode ? localFixtureSheets(config.root) : new Sheets(config, http);
     const provider = new Groq(
       { keys: config.GROQ_API_KEYS, model: config.GROQ_MODEL },
       http,
@@ -181,6 +212,20 @@ export async function main() {
         }
       },
       prepareApproval: async (video, plan, progress) => {
+        if (localMode) {
+          await mkdir(resolve(config.root, "output"), { recursive: true });
+          await writeFile(resolve(config.root, "output", "final-video.json"), JSON.stringify(video, null, 2), "utf8");
+          return {
+            summary: {
+              id: "local-fixture-approval",
+              status: "pending" as const,
+              previewKey: video.path,
+              expiresAt: new Date(Date.now() + 72 * 3600000).toISOString(),
+            },
+            deliver: async () => {},
+            revoke: async () => {},
+          };
+        }
         const request = await approvalStore.prepare(video, plan, progress);
         return {
           summary: request.approval,
@@ -193,7 +238,9 @@ export async function main() {
         return ["No social publication staging created before approval"];
       },
       notify: (p) =>
-        notifier.progress({ ...p, remarks: redact(p.remarks, secrets) }),
+        localMode
+          ? Promise.resolve()
+          : notifier.progress({ ...p, remarks: redact(p.remarks, secrets) }),
       cancelled: () => cancelledByUser,
       now: () => new Date(),
     });

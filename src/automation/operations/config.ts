@@ -63,6 +63,7 @@ export function loadConfig(
   env: NodeJS.ProcessEnv = process.env,
   root = process.cwd(),
 ): Config {
+  const localFixture = env.LOCAL_FIXTURE_MODE === "true";
   const transcriptPath = resolve(root, "assets/Base-audio.txt");
   const transcript =
     env.VOICEBOX_REFERENCE_TEXT ||
@@ -71,6 +72,21 @@ export function loadConfig(
       : undefined);
   const parsed = environment.safeParse({
     ...env,
+    ...(localFixture
+      ? {
+          GOOGLE_SHEET_ID: "local-fixture",
+          GOOGLE_CREDENTIALS: JSON.stringify({
+            client_email: "local@example.invalid",
+            private_key: "local-fixture-key",
+          }),
+          GROQ_API_KEYS: env.GROQ_API_KEYS || "local-fallback-key",
+          INSTAGRAM_ACCOUNT_ID: "0",
+          INSTAGRAM_ACCESS_TOKEN: "local-fixture",
+          FACEBOOK_PAGE_ID: "0",
+          FACEBOOK_ACCESS_TOKEN: "local-fixture",
+          NOTIFICATION_EMAIL: env.NOTIFICATION_EMAIL || env.EMAIL_USER,
+        }
+      : {}),
     VOICEBOX_REFERENCE_TEXT: transcript,
   });
   if (!parsed.success)
