@@ -151,7 +151,18 @@ export async function main() {
         return sheets.recordPrimitiveReviews(jobId, specs, artifactUrl);
       },
       assets: createAssets(config, http, groq, groq),
-      voice: createVoice(config, signal),
+      voice: localMode
+        ? async (_plan, _workspace) => {
+            const path = resolve(config.root, "assets/Base-audio.mp3");
+            const metadata = await probe(path, signal());
+            const audio = metadata.streams.find((stream) => stream.codec_type === "audio");
+            return {
+              path,
+              duration: metadata.format.duration,
+              sampleRate: audio?.sample_rate ?? 24000,
+            };
+          }
+        : createVoice(config, signal),
       captions: createCaptions(config, http),
       render: (plan, visualPlan, assets, narration, captions, workspace) =>
         renderVideo(plan, visualPlan, narration, captions, workspace, {
