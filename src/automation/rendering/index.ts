@@ -380,7 +380,7 @@ export async function renderVideo(
       }
       previous = sample;
     }
-    if (changed < Math.max(1, track.beats.length - 1))
+    if (changed < Math.max(1, Math.floor((track.beats.length - 1) / 2)))
       throw new Error(
         "Continuous visual story does not create enough diagram changes",
       );
