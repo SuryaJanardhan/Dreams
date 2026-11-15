@@ -12,9 +12,11 @@ import { Sheets } from "./sheets/index.js";
 import { createContent } from "./content/index.js";
 import { createResearch } from "./research/index.js";
 import {
+  completeVisualPlanActions,
   createVisualPlan,
   parsePrimitiveSpec,
   repairVisualPlan,
+  validateVisualPlan,
 } from "./visual-planning/index.js";
 import { createAssets } from "./assets/index.js";
 import { writePrimitiveReviewArtifacts } from "./primitives/index.js";
@@ -26,7 +28,7 @@ import { createVisualQuality, VisualQualityError } from "./quality/index.js";
 import { ApprovalStore } from "./approval/store.js";
 import { runWorkflow } from "./workflow/index.js";
 import { message } from "./domain.js";
-import type { Task, Progress, PrimitiveSpec } from "./domain.js";
+import type { Task, Progress, PrimitiveSpec, ContentPlan, VisualPlan } from "./domain.js";
 
 function localFixtureSheets(root: string) {
   const outputDir = process.env.LOCAL_OUTPUT_DIR || resolve(root, "output");
@@ -55,6 +57,33 @@ function localFixtureSheets(root: string) {
     promotedPrimitives: async () => [] as PrimitiveSpec[],
     recordPrimitiveReviews: async () => "output/primitive-reviews",
   };
+}
+
+function localFixtureVisualPlan(content: ContentPlan): VisualPlan {
+  const world: VisualPlan["world"] = [
+    { id: "jwt-token", kind: "token", label: "JWT", detail: "Signed claim travels with each request", semantic: "active", box: { x: 70, y: 190, width: 340, height: 250 } },
+    { id: "api-cluster", kind: "server-cluster", label: "API servers", detail: "Verify token locally", semantic: "structure", box: { x: 500, y: 190, width: 330, height: 250 } },
+    { id: "session-store", kind: "database", label: "Session store", detail: "Login state lives here", semantic: "success", box: { x: 290, y: 520, width: 340, height: 250 } },
+    { id: "decision-table", kind: "table", label: "Choose by tradeoff", semantic: "structure", box: { x: 80, y: 850, width: 740, height: 300 }, rows: [["JWT", "Scale out; expiry-based revocation"], ["Session", "Shared state; immediate revocation"]] },
+  ];
+  const timeline: VisualPlan["timeline"] = [];
+  let visible = ["jwt-token", "api-cluster"];
+  for (const [index, beat] of content.beats.entries()) {
+    const anchor = beat.text.trim().split(/\s+/).slice(0, 6).join(" ").slice(0, 60);
+    if (index === 0) timeline.push({ id: "fixture-intro", beatId: beat.id, action: "reveal", objectIds: visible, anchor, motion: "soft-enter" });
+    else if (index === 1) timeline.push({ id: "fixture-jwt-transfer", beatId: beat.id, action: "transfer", objectIds: ["jwt-token", "api-cluster"], anchor, motion: "travel-path" });
+    else if (index === 2) timeline.push({ id: "fixture-expiry", beatId: beat.id, action: "expire", objectIds: ["jwt-token"], anchor, motion: "state-change" });
+    else if (index === 3) {
+      visible = [...visible, "session-store"];
+      timeline.push({ id: "fixture-session", beatId: beat.id, action: "reveal", objectIds: ["session-store"], anchor, motion: "soft-enter" });
+    } else if (index === 4) {
+      timeline.push({ id: "fixture-clear", beatId: beat.id, action: "remove", objectIds: visible, anchor, motion: "soft-exit" });
+      visible = ["decision-table"];
+      timeline.push({ id: "fixture-decision", beatId: beat.id, action: "reveal", objectIds: visible, anchor, motion: "rearrange" });
+    } else timeline.push({ id: `fixture-hold-${index}`, beatId: beat.id, action: "focus", objectIds: ["decision-table"], anchor, motion: "focus" });
+  }
+  const candidate: VisualPlan = { version: 2, world, timeline, camera: [], assetIntents: [], proposedPrimitives: [] };
+  return validateVisualPlan(completeVisualPlanActions(candidate, content), content);
 }
 export async function main() {
   let secrets: string[] = [];
@@ -146,7 +175,9 @@ export async function main() {
       research: createResearch(groq),
       content: createContent(groq),
       promotedPrimitives: () => sheets.promotedPrimitives(parsePrimitiveSpec),
-      visualPlan: createVisualPlan(groq),
+      visualPlan: localMode
+        ? async (_task, plan) => localFixtureVisualPlan(plan)
+        : createVisualPlan(groq),
       recordPrimitiveReviews: async (jobId, specs) => {
         await writePrimitiveReviewArtifacts(config.root, jobId, specs);
         const artifactUrl = process.env.GITHUB_RUN_ID
