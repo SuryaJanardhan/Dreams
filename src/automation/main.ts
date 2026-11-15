@@ -18,7 +18,8 @@ import {
 } from "./visual-planning/index.js";
 import { createAssets } from "./assets/index.js";
 import { writePrimitiveReviewArtifacts } from "./primitives/index.js";
-import { createVoice } from "./voice/index.js";
+import { createVoice, validateNarrationDuration } from "./voice/index.js";
+import { assertAudio } from "./operations/media.js";
 import { createCaptions } from "./captions/index.js";
 import { renderVideo } from "./rendering/index.js";
 import { createVisualQuality, VisualQualityError } from "./quality/index.js";
@@ -26,9 +27,9 @@ import { ApprovalStore } from "./approval/store.js";
 import { runWorkflow } from "./workflow/index.js";
 import { message } from "./domain.js";
 import type { Task, Progress, PrimitiveSpec } from "./domain.js";
-import type { CaptionTrack } from "./domain.js";
 
 function localFixtureSheets(root: string) {
+  const outputDir = process.env.LOCAL_OUTPUT_DIR || resolve(root, "output");
   const task: Task = {
     id: "local-fixture-task",
     row: 2,
@@ -40,38 +41,20 @@ function localFixtureSheets(root: string) {
     sourceUrls: [],
   };
   const save = async (progress: Progress) => {
-    await mkdir(resolve(root, "output"), { recursive: true });
-    await writeFile(resolve(root, "output", "progress.json"), JSON.stringify(progress, null, 2), "utf8");
+    await mkdir(outputDir, { recursive: true });
+    await writeFile(resolve(outputDir, "progress.json"), JSON.stringify(progress, null, 2), "utf8");
   };
   return {
     prepare: async () => {},
     intake: async () => ({ kind: "task" as const, task }),
     save,
     pause: async (reason: string) => {
-      await mkdir(resolve(root, "output"), { recursive: true });
-      await writeFile(resolve(root, "output", "paused.json"), JSON.stringify({ reason }, null, 2), "utf8");
+      await mkdir(outputDir, { recursive: true });
+      await writeFile(resolve(outputDir, "paused.json"), JSON.stringify({ reason }, null, 2), "utf8");
     },
     promotedPrimitives: async () => [] as PrimitiveSpec[],
     recordPrimitiveReviews: async () => "output/primitive-reviews",
   };
-}
-function localFixtureCaptions(plan: import("./domain.js").ContentPlan, narration: import("./domain.js").Narration): CaptionTrack {
-  const words = plan.narration.trim().split(/\s+/).filter(Boolean);
-  const slice = narration.duration / Math.max(1, words.length);
-  const timed = words.map((text, index) => ({
-    text,
-    start: index * slice,
-    end: Math.min(narration.duration, (index + 1) * slice),
-  }));
-  let offset = 0;
-  const beats = plan.beats.map((beat) => {
-    const count = beat.text.trim().split(/\s+/).filter(Boolean).length;
-    const first = timed[offset] ?? timed[0]!;
-    const last = timed[Math.min(timed.length - 1, offset + count - 1)] ?? first;
-    offset += count;
-    return { ...beat, start: first.start, end: last.end };
-  });
-  return { words: timed, beats, duration: narration.duration };
 }
 export async function main() {
   let secrets: string[] = [];
@@ -109,6 +92,7 @@ export async function main() {
       finalizing ? finalizeController.signal : production.signal;
     const http = new Http(signal);
     const localMode = process.env.LOCAL_FIXTURE_MODE === "true";
+    const localOutputDir = process.env.LOCAL_OUTPUT_DIR || resolve(config.root, "output");
     const sheets = localMode ? localFixtureSheets(config.root) : new Sheets(config, http);
     const provider = new Groq(
       { keys: config.GROQ_API_KEYS, model: config.GROQ_MODEL },
@@ -172,20 +156,19 @@ export async function main() {
       },
       assets: createAssets(config, http, groq, groq),
       voice: localMode
-        ? async (_plan, _workspace) => {
-            const path = resolve(config.root, "assets/Base-audio.mp3");
-            const metadata = await probe(path, signal());
-            const audio = metadata.streams.find((stream) => stream.codec_type === "audio");
-            return {
-              path,
-              duration: metadata.format.duration,
-              sampleRate: audio?.sample_rate ?? 24000,
-            };
+        ? async (plan, workspace) => {
+            const path = workspace.file("local-narration.wav");
+            await command(
+              "espeak",
+              ["-v", "en", "-s", "148", "-p", "38", "-a", "175", "-w", path, plan.narration],
+              signal(),
+            );
+            const info = await assertAudio(path, signal());
+            validateNarrationDuration(info.duration);
+            return { path, ...info };
           }
         : createVoice(config, signal),
-      captions: localMode
-        ? async (plan, narration) => localFixtureCaptions(plan, narration)
-        : createCaptions(config, http),
+      captions: createCaptions(config, http),
       render: (plan, visualPlan, assets, narration, captions, workspace) =>
         renderVideo(plan, visualPlan, narration, captions, workspace, {
           config,
@@ -203,8 +186,8 @@ export async function main() {
         workspace,
       ) => {
         if (localMode) {
-          await mkdir(resolve(config.root, "output"), { recursive: true });
-          await copyFile(video.path, resolve(config.root, "output", "final.mp4"));
+          await mkdir(localOutputDir, { recursive: true });
+          await copyFile(video.path, resolve(localOutputDir, "final.mp4"));
           return video;
         }
         const review = createVisualQuality(groq, signal);
@@ -251,9 +234,9 @@ export async function main() {
       },
       prepareApproval: async (video, plan, progress) => {
         if (localMode) {
-          await mkdir(resolve(config.root, "output"), { recursive: true });
-          await copyFile(video.path, resolve(config.root, "output", "final.mp4"));
-          await writeFile(resolve(config.root, "output", "final-video.json"), JSON.stringify(video, null, 2), "utf8");
+          await mkdir(localOutputDir, { recursive: true });
+          await copyFile(video.path, resolve(localOutputDir, "final.mp4"));
+          await writeFile(resolve(localOutputDir, "final-video.json"), JSON.stringify(video, null, 2), "utf8");
           return {
             summary: {
               id: "local-fixture-approval",
