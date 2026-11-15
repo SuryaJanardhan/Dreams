@@ -1,4 +1,10 @@
-import type { CaptionCue, MascotPose, MockScene, TimedWord } from "./domain.js";
+import type {
+  BeatRole,
+  CaptionCue,
+  MascotPose,
+  MockScene,
+  TimedWord,
+} from "./domain.js";
 
 function seconds(value: string): number {
   const match = value.match(/^(\d{2}):(\d{2}):(\d{2})[,.](\d{3})$/);
@@ -48,14 +54,31 @@ export function splitCaptionCues(
   actualWords: TimedWord[],
 ): CaptionCue[] {
   if (!actualWords.length) throw new Error("Actual word timings are required");
+  let previousEnd = 0;
+  for (const word of actualWords) {
+    if (word.start < previousEnd - 0.02 || word.end <= word.start)
+      throw new Error("Actual word timings are invalid or overlapping");
+    previousEnd = word.end;
+  }
+  const roles: BeatRole[] = [
+    "hook",
+    "concept-a",
+    "concept-a-example",
+    "concept-b",
+    "scenario",
+    "memory-rule",
+  ];
   let actualOffset = 0;
-  return cues.flatMap((cue, group) => {
+  let substitutions = 0;
+  let intendedTotal = 0;
+  const phrases = cues.flatMap((cue, group) => {
     const intendedWords = cue.text.trim().split(/\s+/);
     const timedWords = actualWords.slice(
       actualOffset,
       actualOffset + intendedWords.length,
     );
     actualOffset += intendedWords.length;
+    intendedTotal += intendedWords.length;
     const first = timedWords[0];
     const last = timedWords.at(-1);
     if (
@@ -66,6 +89,11 @@ export function splitCaptionCues(
       last.end > cue.end + 0.25
     )
       throw new Error("Timed words do not match the approved caption cue");
+    const token = (text: string) =>
+      text.toLowerCase().replace(/[^a-z0-9]/g, "");
+    for (let index = 0; index < intendedWords.length; index++)
+      if (token(intendedWords[index] ?? "") !== token(timedWords[index]?.text ?? ""))
+        substitutions++;
     const sizes = chunkSizes(intendedWords.length);
     let wordOffset = 0;
     return sizes.map((size) => {
@@ -80,23 +108,28 @@ export function splitCaptionCues(
         start: phraseFirst.start,
         end: phraseLast.end,
         text: intendedWords.slice(from, to).join(" "),
-        group,
+        role: roles[group] ?? "memory-rule",
       };
     });
   });
+  if (actualOffset !== actualWords.length)
+    throw new Error("Actual timing contains extra spoken words");
+  if (substitutions / Math.max(1, intendedTotal) > 0.12)
+    throw new Error("Spoken words differ too much from the approved script");
+  return phrases;
 }
 
-const directions: readonly {
-  pose: MascotPose;
-  attention: MockScene["attention"];
-}[] = [
-  { pose: "confused", attention: "both" },
-  { pose: "point-left", attention: "left" },
-  { pose: "phone", attention: "left" },
-  { pose: "laptop", attention: "right" },
-  { pose: "compare-both", attention: "both" },
-  { pose: "conclusion", attention: "both" },
-];
+const directions: Record<
+  BeatRole,
+  { pose: MascotPose; attention: MockScene["attention"] }
+> = {
+  hook: { pose: "confused", attention: "both" },
+  "concept-a": { pose: "point-left", attention: "left" },
+  "concept-a-example": { pose: "phone", attention: "left" },
+  "concept-b": { pose: "laptop", attention: "right" },
+  scenario: { pose: "compare-both", attention: "both" },
+  "memory-rule": { pose: "conclusion", attention: "both" },
+};
 
 export function buildMockTimeline(
   cues: CaptionCue[],
@@ -108,16 +141,16 @@ export function buildMockTimeline(
     const end = cues[index + 1]?.start ?? duration;
     if (end <= start || end > duration + 0.2)
       throw new Error("Caption cues do not form a valid narration timeline");
-    const group = cue.group ?? index;
-    const direction = directions[group] ?? directions.at(-1);
-    if (!direction) throw new Error("Missing mock scene direction");
+    const fallbackRoles = Object.keys(directions) as BeatRole[];
+    const role = cue.role ?? fallbackRoles[index] ?? "memory-rule";
+    const direction = directions[role];
     return {
       start,
       end: Math.min(end, duration),
       text: cue.text,
       pose: direction.pose,
       attention: direction.attention,
-      ...(cue.group === undefined ? {} : { group: cue.group }),
+      role,
     };
   });
 }

@@ -26,7 +26,7 @@ export function validateComparisonRetention(
       "Comparison duration must remain between 25 and 40 seconds",
     );
   const opening = scenes
-    .filter((scene) => scene.group === 0)
+    .filter((scene) => scene.role === "hook")
     .map((scene) => scene.text)
     .join(" ");
   if (
@@ -38,10 +38,10 @@ export function validateComparisonRetention(
     throw new Error(
       "A visual beat remains unchanged for more than six seconds",
     );
-  if (!scenes.some((scene) => scene.group === 4))
+  if (!scenes.some((scene) => scene.role === "scenario"))
     throw new Error("Comparison needs a demonstrated relatable scenario");
   const memoryRule = scenes
-    .filter((scene) => scene.group === 5)
+    .filter((scene) => scene.role === "memory-rule")
     .map((scene) => scene.text)
     .join(" ");
   if (

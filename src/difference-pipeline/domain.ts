@@ -2,8 +2,16 @@ export interface CaptionCue {
   start: number;
   end: number;
   text: string;
-  group?: number;
+  role?: BeatRole;
 }
+
+export type BeatRole =
+  | "hook"
+  | "concept-a"
+  | "concept-a-example"
+  | "concept-b"
+  | "scenario"
+  | "memory-rule";
 
 export interface TimedWord {
   text: string;

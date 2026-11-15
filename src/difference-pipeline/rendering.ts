@@ -29,6 +29,8 @@ function wrapLines(text: string, limit: number): string[] {
 }
 
 export function layoutCaption(text: string) {
+  if (text.split(/\s+/).some((word) => word.length > 32))
+    throw new Error("Subtitle contains a technical word too wide for the safe area");
   for (const option of [
     { fontSize: 64, limit: 24, maxLines: 2 },
     { fontSize: 58, limit: 27, maxLines: 2 },
@@ -94,7 +96,9 @@ function analogyIllustration(side: "left" | "right") {
 }
 
 export function visualMode(scene: MockScene) {
-  return scene.group === 4 ? ("car-map" as const) : ("browser-search" as const);
+  return scene.role === "scenario"
+    ? ("car-map" as const)
+    : ("browser-search" as const);
 }
 
 function sceneSvg(scene: MockScene) {
