@@ -17,7 +17,7 @@ export class LocalFallbackGenerator implements StructuredGenerator, ResearchGene
   ) {}
 
   private async fallback<T>(kind: string, payload: Record<string, unknown>, schema: z.ZodType<T>): Promise<T> {
-    const dir = resolve(this.root, "output");
+    const dir = process.env.LOCAL_OUTPUT_DIR || resolve(this.root, "output");
     await mkdir(dir, { recursive: true });
     const requestPath = resolve(dir, "ai-fallback-request.json");
     const responsePath = resolve(dir, "ai-fallback-response.json");
